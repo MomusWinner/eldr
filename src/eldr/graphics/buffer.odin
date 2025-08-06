@@ -10,7 +10,6 @@ import "core:strings"
 import "vendor:glfw"
 import vk "vendor:vulkan"
 
-// TODO: research
 find_memory_type :: proc(
 	physical_device: vk.PhysicalDevice,
 	type_filter: u32,
@@ -136,4 +135,17 @@ destroy_uniform_buffer :: proc(g: ^Graphics, uniform_buffer: ^Uniform_Buffer) {
 	vk.UnmapMemory(g.device, uniform_buffer.memory)
 	destroy_buffer(g, &uniform_buffer.parent)
 	uniform_buffer.mapped = nil
+}
+
+create_ssbo :: proc(g: ^Graphics, particles: rawptr, size: vk.DeviceSize) -> Buffer {
+
+	staging_buffer := create_buffer(g, size, {.TRANSFER_SRC}, {.HOST_VISIBLE, .HOST_COHERENT})
+	fill_buffer(g, staging_buffer, size, particles)
+
+	ssbo := create_buffer(g, size, {.TRANSFER_DST, .VERTEX_BUFFER, .STORAGE_BUFFER}, {.DEVICE_LOCAL})
+	copy_buffer(g, staging_buffer, ssbo, size)
+
+	destroy_buffer(g, &staging_buffer)
+
+	return ssbo
 }

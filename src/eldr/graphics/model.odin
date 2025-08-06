@@ -21,3 +21,12 @@ import vk "vendor:vulkan"
 // 	// vk.CmdDraw(gr.command_buffer, 3, 1, 0, 0)
 // 	vk.CmdDrawIndexed(g.command_buffer, cast(u32)len(model.indices), 1, 0, 0, 0)
 // }
+
+draw_model :: proc(g: ^Graphics, vbo: ^Buffer, ebo: ^Buffer) {
+
+}
+
+Material :: struct {
+	pipeline:       Handle,
+	descriptor_set: vk.DescriptorSet,
+}

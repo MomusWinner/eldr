@@ -5,44 +5,55 @@ import "core:math"
 import "core:os"
 import vk "vendor:vulkan"
 
-TextureImage :: struct {
-	image:  vk.Image,
-	view:   vk.ImageView,
-	memory: vk.DeviceMemory,
-}
-
-Texture :: struct {
-	image:   TextureImage,
-	sampler: vk.Sampler,
-}
-
-create_image_view :: proc(
-	device: vk.Device,
-	image: vk.Image,
-	format: vk.Format,
-	aspect: vk.ImageAspectFlags,
-	mip_levels: u32,
-) -> vk.ImageView {
-	create_info := vk.ImageViewCreateInfo {
-		sType = .IMAGE_VIEW_CREATE_INFO,
-		image = image,
-		viewType = .D2,
-		format = format,
-		subresourceRange = {aspectMask = aspect, levelCount = mip_levels, layerCount = 1},
+create_texture :: proc(g: ^Graphics, image: Image, mip_levels: f32 = 0) -> Texture {
+	levels: f32 = 0
+	if mip_levels <= 0 {
+		// levels = math.floor_f32(math.log2(cast(f32)max(image.width, image.height))) + 1
+		levels = 1
+	} else {
+		levels = mip_levels
 	}
 
-	image_view: vk.ImageView
+	image := _create_texture_image(g, image, cast(u32)levels)
 
-	must(vk.CreateImageView(device, &create_info, nil, &image_view), "failed to create texture image view!")
+	sampler_info := vk.SamplerCreateInfo {
+		sType                   = .SAMPLER_CREATE_INFO,
+		magFilter               = .LINEAR,
+		minFilter               = .LINEAR,
+		addressModeU            = .REPEAT,
+		addressModeV            = .REPEAT,
+		addressModeW            = .REPEAT,
+		anisotropyEnable        = true,
+		maxAnisotropy           = g.physical_device_property.limits.maxSamplerAnisotropy,
+		borderColor             = .INT_OPAQUE_BLACK,
+		unnormalizedCoordinates = false,
+		compareEnable           = false,
+		compareOp               = .ALWAYS,
+		mipmapMode              = .LINEAR,
+		mipLodBias              = 0.0,
+		minLod                  = 0.0,
+		maxLod                  = cast(f32)levels,
+	}
 
-	return image_view
+	sampler: vk.Sampler
+	must(vk.CreateSampler(g.device, &sampler_info, nil, &sampler))
+
+	return Texture{image = image, sampler = sampler}
 }
 
+destroy_texture :: proc(g: ^Graphics, texture: ^Texture) {
+	vk.DestroySampler(g.device, texture.sampler, nil)
+	texture.sampler = 0
+	_destroy_texture_image(g.device, &texture.image)
+}
+
+@(private)
 _transition_image_layout :: proc {
 	_transition_image_layout_from_graphics,
 	_transition_image_layout_from_command_buffer,
 }
 
+@(private)
 _transition_image_layout_from_graphics :: proc(
 	g: ^Graphics,
 	image: vk.Image,
@@ -65,6 +76,7 @@ _transition_image_layout_from_graphics :: proc(
 	_end_single_command(sc)
 }
 
+@(private)
 _transition_image_layout_from_command_buffer :: proc(
 	command_buffer: vk.CommandBuffer,
 	image: vk.Image,
@@ -123,32 +135,13 @@ _transition_image_layout_from_command_buffer :: proc(
 	vk.CmdPipelineBarrier(command_buffer, source_stage, destination_stage, {}, {}, nil, 0, nil, 1, &barrier)
 }
 
-copy_buffer_to_image :: proc(g: ^Graphics, buffer: vk.Buffer, image: vk.Image, width: u32, height: u32) {
-	sc := _begin_single_command(g)
-	region := vk.BufferImageCopy {
-		bufferOffset = 0,
-		bufferRowLength = 0,
-		bufferImageHeight = 0,
-		imageSubresource = vk.ImageSubresourceLayers {
-			aspectMask = {.COLOR},
-			mipLevel = 0,
-			baseArrayLayer = 0,
-			layerCount = 1,
-		},
-		imageOffset = vk.Offset3D{0, 0, 0},
-		imageExtent = vk.Extent3D{width, height, 1},
-	}
-
-	vk.CmdCopyBufferToImage(sc.command_buffer, buffer, image, .TRANSFER_DST_OPTIMAL, 1, &region)
-
-	_end_single_command(sc)
-}
-
+@(private)
 _create_image :: proc {
 	_create_image_from_graphics,
 	_create_image_from_device,
 }
 
+@(private)
 _create_image_from_graphics :: proc(
 	g: ^Graphics,
 	width, height, mip_levels: u32,
@@ -175,6 +168,7 @@ _create_image_from_graphics :: proc(
 	)
 }
 
+@(private)
 _create_image_from_device :: proc(
 	device: vk.Device,
 	physical_device: vk.PhysicalDevice,
@@ -233,7 +227,112 @@ _create_image_from_device :: proc(
 	return image, image_memory
 }
 
-generate_mipmaps :: proc(
+@(private)
+_create_image_view :: proc(
+	device: vk.Device,
+	image: vk.Image,
+	format: vk.Format,
+	aspect: vk.ImageAspectFlags,
+	mip_levels: u32,
+) -> vk.ImageView {
+	create_info := vk.ImageViewCreateInfo {
+		sType = .IMAGE_VIEW_CREATE_INFO,
+		image = image,
+		viewType = .D2,
+		format = format,
+		subresourceRange = {aspectMask = aspect, levelCount = mip_levels, layerCount = 1},
+	}
+
+	image_view: vk.ImageView
+
+	must(vk.CreateImageView(device, &create_info, nil, &image_view), "failed to create texture image view!")
+
+	return image_view
+}
+
+@(private)
+_create_texture_image :: proc(g: ^Graphics, image: Image, mip_levels: u32 = 1) -> TextureImage {
+	desired_channels: u32 = 4
+	image_size := cast(vk.DeviceSize)(image.width * image.height * desired_channels)
+
+	staging_buffer := create_buffer(g, cast(vk.DeviceSize)image_size, {.TRANSFER_SRC}, {.HOST_VISIBLE, .HOST_COHERENT})
+	defer destroy_buffer(g, &staging_buffer)
+
+	fill_buffer(g, staging_buffer, image_size, image.data)
+
+	format: vk.Format = .R8G8B8A8_SRGB
+
+	// Create Vulkan Image
+	vk_image, vk_memory := _create_image(
+		g,
+		image.width,
+		image.height,
+		mip_levels,
+		{._1},
+		format,
+		.OPTIMAL,
+		{.TRANSFER_SRC, .TRANSFER_DST, .SAMPLED},
+		{.DEVICE_LOCAL},
+	)
+
+	_transition_image_layout(g, vk_image, {.COLOR}, format, .UNDEFINED, .TRANSFER_DST_OPTIMAL, mip_levels)
+	_copy_buffer_to_image(g, staging_buffer.buffer, vk_image, image.width, image.height)
+
+	_generate_mipmaps(g, vk_image, .R8G8B8A8_SRGB, cast(i32)image.width, cast(i32)image.height, mip_levels)
+
+	image_view := _create_image_view(g.device, vk_image, format, {.COLOR}, mip_levels)
+
+	return TextureImage{image = vk_image, memory = vk_memory, view = image_view}
+}
+
+
+@(private)
+Create_Texture_Image :: struct {
+	width, height, mip_levels: u32,
+	num_samples:               vk.SampleCountFlags,
+	format:                    vk.Format,
+	tiling:                    vk.ImageTiling,
+	usage:                     vk.ImageUsageFlags,
+	memory_properties:         vk.MemoryPropertyFlags,
+	aspect:                    vk.ImageAspectFlags,
+	old_layout:                vk.ImageLayout,
+	new_layout:                vk.ImageLayout,
+}
+
+@(private)
+_destroy_texture_image :: proc(device: vk.Device, image: ^TextureImage) {
+	vk.DestroyImageView(device, image.view, nil)
+	vk.DestroyImage(device, image.image, nil)
+	vk.FreeMemory(device, image.memory, nil)
+	image.view = 0
+	image.image = 0
+	image.memory = 0
+}
+
+@(private = "file")
+_copy_buffer_to_image :: proc(g: ^Graphics, buffer: vk.Buffer, image: vk.Image, width: u32, height: u32) {
+	sc := _begin_single_command(g)
+	region := vk.BufferImageCopy {
+		bufferOffset = 0,
+		bufferRowLength = 0,
+		bufferImageHeight = 0,
+		imageSubresource = vk.ImageSubresourceLayers {
+			aspectMask = {.COLOR},
+			mipLevel = 0,
+			baseArrayLayer = 0,
+			layerCount = 1,
+		},
+		imageOffset = vk.Offset3D{0, 0, 0},
+		imageExtent = vk.Extent3D{width, height, 1},
+	}
+
+	vk.CmdCopyBufferToImage(sc.command_buffer, buffer, image, .TRANSFER_DST_OPTIMAL, 1, &region)
+
+	_end_single_command(sc)
+}
+
+@(private = "file")
+_generate_mipmaps :: proc(
 	g: ^Graphics,
 	image: vk.Image,
 	format: vk.Format,
@@ -242,7 +341,7 @@ generate_mipmaps :: proc(
 	mip_levels: u32,
 ) {
 	format_properties := vk.FormatProperties{}
-	vk.GetPhysicalDeviceFormatProperties(g.physical_device, format, &format_properties) // TODO: get cashed data
+	vk.GetPhysicalDeviceFormatProperties(g.physical_device, format, &format_properties)
 	if .SAMPLED_IMAGE_FILTER_LINEAR not_in format_properties.optimalTilingFeatures {
 		log.error("texture image format does not support linear blitting!")
 		return
@@ -291,7 +390,6 @@ generate_mipmaps :: proc(
 			.LINEAR,
 		)
 
-
 		barrier.oldLayout = .TRANSFER_SRC_OPTIMAL
 		barrier.newLayout = .SHADER_READ_ONLY_OPTIMAL
 		barrier.srcAccessMask = {.TRANSFER_READ}
@@ -316,89 +414,4 @@ generate_mipmaps :: proc(
 	vk.CmdPipelineBarrier(sc.command_buffer, {.TRANSFER}, {.FRAGMENT_SHADER}, {}, 0, nil, 0, nil, 1, &barrier)
 
 	_end_single_command(sc)
-}
-
-create_texture_image :: proc(g: ^Graphics, image: Image, mip_levels: u32 = 1) -> TextureImage {
-	desired_channels: u32 = 4
-	image_size := cast(vk.DeviceSize)(image.width * image.height * desired_channels)
-
-	staging_buffer := create_buffer(g, cast(vk.DeviceSize)image_size, {.TRANSFER_SRC}, {.HOST_VISIBLE, .HOST_COHERENT})
-	defer destroy_buffer(g, &staging_buffer)
-
-	fill_buffer(g, staging_buffer, image_size, image.data)
-
-	format: vk.Format = .R8G8B8A8_SRGB
-
-	// Create Vulkan Image
-	vk_image, vk_memory := _create_image(
-		g,
-		image.width,
-		image.height,
-		mip_levels,
-		{._1},
-		format,
-		.OPTIMAL,
-		{.TRANSFER_SRC, .TRANSFER_DST, .SAMPLED},
-		{.DEVICE_LOCAL},
-	)
-
-	_transition_image_layout(g, vk_image, {.COLOR}, format, .UNDEFINED, .TRANSFER_DST_OPTIMAL, mip_levels)
-	copy_buffer_to_image(g, staging_buffer.buffer, vk_image, image.width, image.height)
-
-	generate_mipmaps(g, vk_image, .R8G8B8A8_SRGB, cast(i32)image.width, cast(i32)image.height, mip_levels)
-
-	image_view := create_image_view(g.device, vk_image, format, {.COLOR}, mip_levels)
-
-	return TextureImage{image = vk_image, memory = vk_memory, view = image_view}
-}
-
-destroy_texture_image :: proc(device: vk.Device, image: ^TextureImage) {
-	vk.DestroyImageView(device, image.view, nil)
-	vk.DestroyImage(device, image.image, nil)
-	vk.FreeMemory(device, image.memory, nil)
-	image.view = 0
-	image.image = 0
-	image.memory = 0
-}
-
-create_texture :: proc(g: ^Graphics, image: Image, mip_levels: f32 = 0) -> Texture {
-	levels: f32 = 0
-	if mip_levels <= 0 {
-		// levels = math.floor_f32(math.log2(cast(f32)max(image.width, image.height))) + 1
-		levels = 1
-	} else {
-		levels = mip_levels
-	}
-
-	image := create_texture_image(g, image, cast(u32)levels)
-
-	sampler_info := vk.SamplerCreateInfo {
-		sType                   = .SAMPLER_CREATE_INFO,
-		magFilter               = .LINEAR,
-		minFilter               = .LINEAR,
-		addressModeU            = .REPEAT,
-		addressModeV            = .REPEAT,
-		addressModeW            = .REPEAT,
-		anisotropyEnable        = true,
-		maxAnisotropy           = g.physical_device_property.limits.maxSamplerAnisotropy,
-		borderColor             = .INT_OPAQUE_BLACK,
-		unnormalizedCoordinates = false,
-		compareEnable           = false,
-		compareOp               = .ALWAYS,
-		mipmapMode              = .LINEAR,
-		mipLodBias              = 0.0,
-		minLod                  = 0.0,
-		maxLod                  = cast(f32)levels,
-	}
-
-	sampler: vk.Sampler
-	must(vk.CreateSampler(g.device, &sampler_info, nil, &sampler))
-
-	return Texture{image = image, sampler = sampler}
-}
-
-destroy_texture :: proc(g: ^Graphics, texture: ^Texture) {
-	vk.DestroySampler(g.device, texture.sampler, nil)
-	texture.sampler = 0
-	destroy_texture_image(g.device, &texture.image)
 }

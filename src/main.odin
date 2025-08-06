@@ -22,12 +22,6 @@ g_ctx: runtime.Context
 
 vec3 :: [3]f32
 
-UniformBufferObject :: struct {
-	model:      glsl.mat4,
-	view:       glsl.mat4,
-	projection: glsl.mat4,
-}
-
 last_time: f64
 dt: f64
 
@@ -92,25 +86,9 @@ main :: proc() {
 
 	eldr.init_graphic(e, window)
 
-	// particle_renderer := gfx.particle_new(e.g)
-	//
-	texture := eldr.load_texture(e, "./assets/room.png")
+	scene := create_room_scene(e)
+	scene.init(&scene)
 
-	defer eldr.unload_texture(e, &texture)
-
-	uniform_buffer := gfx.create_uniform_buffer(e.g, cast(vk.DeviceSize)size_of(UniformBufferObject))
-	defer gfx.destroy_uniform_buffer(e.g, &uniform_buffer)
-
-	model := eldr.load_model(e, "./assets/room.obj")
-	defer eldr.destroy_model(e, &model)
-
-	create_default_pipeline(e)
-
-	descriptor_set, _ := gfx.create_descriptor_set(e.g, "default_pipeline", 0, {uniform_buffer, texture})
-
-
-	// update_unfiform_buffer(&uniform_buffer, e.g.swapchain.extent)
-	start_unfiform_buffer(&uniform_buffer, e.g.swapchain.extent)
 	for !glfw.WindowShouldClose(window) {
 		free_all(context.temp_allocator)
 
@@ -129,42 +107,15 @@ main :: proc() {
 
 		dt = glfw.GetTime() - last_time
 		last_time = glfw.GetTime()
-		//log.info("FPS: ", 1 / dt)
+		// log.info("FPS: ", 1 / dt)
 
-		// gfx.particle_update_uniform_buffer(particle_renderer, cast(f32)dt)
-		// gfx.particle_compute(particle_renderer)
-
-		gfx.begin_render(e.g)
-		// Begin gfx. ------------------------------
-		viewport := vk.Viewport {
-			width    = f32(e.g.swapchain.extent.width),
-			height   = f32(e.g.swapchain.extent.height),
-			maxDepth = 1.0,
-		}
-		vk.CmdSetViewport(e.g.command_buffer, 0, 1, &viewport)
-
-		scissor := vk.Rect2D {
-			extent = e.g.swapchain.extent,
-		}
-		vk.CmdSetScissor(e.g.command_buffer, 0, 1, &scissor)
-
-		//gfx.particle_draw(particle_renderer)
-		gfx.bind_pipeline(e.g, "default_pipeline")
-
-		offset := vk.DeviceSize{}
-		vk.CmdBindVertexBuffers(e.g.command_buffer, 0, 1, &model.vbo.buffer, &offset)
-		vk.CmdBindIndexBuffer(e.g.command_buffer, model.ebo.buffer, 0, .UINT16)
-
-		gfx.bind_descriptor_set(e.g, "default_pipeline", &descriptor_set)
-		// vk.CmdDraw(e.g.command_buffer, 3, 1, 0, 0)
-		vk.CmdDrawIndexed(e.g.command_buffer, cast(u32)len(model.indices), 1, 0, 0, 0)
-
-
-		// End gfx. ------------------------------
-		// gfx.end_render(e.g, []vk.Semaphore{particle_renderer.semaphore}, {{.VERTEX_INPUT}})
-		gfx.end_render(e.g, []vk.Semaphore{}, {})
+		scene.update(&scene, dt)
+		scene.draw(&scene)
 	}
 	vk.DeviceWaitIdle(e.g.device)
+
+	scene.destroy(&scene)
+
 	log.info("Successfuly close")
 }
 
@@ -172,50 +123,3 @@ glfw_error_callback :: proc "c" (code: i32, description: cstring) {
 	context = g_ctx
 	log.errorf("glfw: %i: %s", code, description)
 }
-
-update_unfiform_buffer :: proc(buffer: ^gfx.Uniform_Buffer, extend: vk.Extent2D) {
-	ubo := UniformBufferObject{}
-	ubo.model = glsl.mat4Rotate(glsl.vec3{1, 1, 1}, cast(f32)glfw.GetTime() * glsl.radians_f32(90))
-	ubo.view = glsl.mat4LookAt(glsl.vec3{0, 0, 2}, glsl.vec3{0, 0, 0}, glsl.vec3{0, 1, 0})
-	ubo.projection = glsl.mat4Perspective(
-		glsl.radians_f32(45),
-		(cast(f32)extend.width / cast(f32)extend.height),
-		0.1,
-		10,
-	)
-	// NOTE: GLM was originally designed for OpenGL, where the Y coordinate of the clip coordinates is inverted
-	ubo.projection[1][1] *= -1
-
-	runtime.mem_copy(buffer.mapped, &ubo, size_of(ubo))
-}
-
-start_unfiform_buffer :: proc(buffer: ^gfx.Uniform_Buffer, extend: vk.Extent2D) {
-	ubo := UniformBufferObject{}
-	ubo.model = glsl.mat4Rotate(glsl.vec3{0, 0, 0}, glsl.radians_f32(0))
-	ubo.model = glsl.mat4Translate(glsl.vec3{0, 0, 0})
-	ubo.view = glsl.mat4LookAt(glsl.vec3{2, 2, 2}, glsl.vec3{0, 0, 0}, glsl.vec3{0, 0, 1})
-	ubo.projection = glsl.mat4Perspective(
-		glsl.radians_f32(45),
-		(cast(f32)extend.width / cast(f32)extend.height),
-		0.1,
-		10,
-	)
-	// NOTE: GLM was originally designed for OpenGL, where the Y coordinate of the clip coordinates is inverted
-	ubo.projection[1][1] *= -1
-
-	runtime.mem_copy(buffer.mapped, &ubo, size_of(ubo))
-}
-
-
-// TODO: remove
-// vertices: []gfx.Vertex = {
-// 	{{-0.5, -0.5, 0.0}, {1.0, 0.0, 0.0}, {1.0, 0.0}},
-// 	{{0.5, -0.5, 0.0}, {0.0, 1.0, 0.0}, {0.0, 0.0}},
-// 	{{0.5, 0.5, 0.0}, {0.0, 0.0, 1.0}, {0.0, 1.0}},
-// 	{{-0.5, 0.5, 0.0}, {1.0, 1.0, 1.0}, {1.0, 1.0}},
-// 	// --------------------------------------------
-// 	{{-0.5, -0.5, -0.5}, {1.0, 0.0, 0.0}, {1.0, 0.0}},
-// 	{{0.5, -0.5, -0.5}, {0.0, 1.0, 0.0}, {0.0, 0.0}},
-// 	{{0.5, 0.5, -0.5}, {0.0, 0.0, 1.0}, {0.0, 1.0}},
-// 	{{-0.5, 0.5, -0.5}, {1.0, 1.0, 1.0}, {1.0, 1.0}},
-// }

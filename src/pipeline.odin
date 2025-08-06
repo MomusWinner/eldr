@@ -1,7 +1,10 @@
 package main
 
+import "core:log"
+import "core:mem/virtual"
 import "eldr"
 import gfx "eldr/graphics"
+import hm "eldr/handle_map"
 
 default_shader_attribute :: proc() -> (eldr.VertexInputBindingDescription, [3]eldr.VertexInputAttributeDescription) {
 	bind_description := eldr.VertexInputBindingDescription {
@@ -34,27 +37,30 @@ default_shader_attribute :: proc() -> (eldr.VertexInputBindingDescription, [3]el
 	return bind_description, attribute_descriptions
 }
 
-create_default_pipeline :: proc(e: ^eldr.Eldr) {
+create_default_pipeline :: proc(e: ^eldr.Eldr) -> hm.Handle {
 	vert_bind, vert_attr := default_shader_attribute()
 
-	bindings := make([]gfx.Pipeline_Set_Binding_Info, 2)
-	bindings[0] = gfx.Pipeline_Set_Binding_Info {
-		binding          = 0,
-		descriptor_type  = .UNIFORM_BUFFER,
-		descriptor_count = 1,
-		stage_flags      = {.VERTEX},
+	set_infos := []gfx.Pipeline_Set_Info {
+		gfx.Pipeline_Set_Info {
+			set = 0,
+			binding_infos = {
+				gfx.Pipeline_Set_Binding_Info {
+					binding = 0,
+					descriptor_type = .UNIFORM_BUFFER,
+					descriptor_count = 1,
+					stage_flags = {.VERTEX},
+				},
+				gfx.Pipeline_Set_Binding_Info {
+					binding = 1,
+					descriptor_type = .COMBINED_IMAGE_SAMPLER,
+					descriptor_count = 1,
+					stage_flags = {.FRAGMENT},
+				},
+			},
+		},
 	}
-	bindings[1] = gfx.Pipeline_Set_Binding_Info {
-		binding          = 1,
-		descriptor_type  = .COMBINED_IMAGE_SAMPLER,
-		descriptor_count = 1,
-		stage_flags      = {.FRAGMENT},
-	}
-
-	set_infos := []gfx.Pipeline_Set_Info{gfx.Pipeline_Set_Info{set = 0, binding_infos = bindings}}
 
 	create_info := gfx.Create_Pipeline_Info {
-		name = "default_pipeline",
 		set_infos = set_infos,
 		vertex_input_description = {
 			input_rate = .VERTEX,
@@ -81,5 +87,10 @@ create_default_pipeline :: proc(e: ^eldr.Eldr) {
 		},
 	}
 
-	gfx.create_pipeline(e.g, &create_info)
+	handle, ok := gfx.create_graphics_pipeline(e.g, &create_info)
+	if !ok {
+		log.info("couldn't create default pipeline")
+	}
+
+	return handle
 }

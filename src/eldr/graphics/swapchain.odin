@@ -10,6 +10,7 @@ import "vendor:glfw"
 import vk "vendor:vulkan"
 
 @(private)
+@(require_results)
 _swapchain_new :: proc(
 	window: glfw.WindowHandle,
 	physical_device: vk.PhysicalDevice,
@@ -17,9 +18,9 @@ _swapchain_new :: proc(
 	surface: vk.SurfaceKHR,
 	samples: vk.SampleCountFlags,
 ) -> ^Swap_Chain {
-	indices := find_queue_families(physical_device, surface)
+	indices := _find_queue_families(physical_device, surface)
 
-	support, result := query_swapchain_support(physical_device, surface, context.temp_allocator)
+	support, result := _query_swapchain_support(physical_device, surface, context.temp_allocator)
 	if result != .SUCCESS {
 		log.panicf("query swapchain failed: %v", result)
 	}
@@ -81,9 +82,8 @@ _swapchain_setup :: proc(swapchain: ^Swap_Chain, render_pass: vk.RenderPass, com
 @(private)
 _swapchain_destroy :: proc(swapchain: ^Swap_Chain) {
 	_swapchain_destroy_framebuffers(swapchain)
-
-	destroy_texture_image(swapchain._device, &swapchain.color_image)
-	destroy_texture_image(swapchain._device, &swapchain.depth_image)
+	_destroy_texture_image(swapchain._device, &swapchain.color_image)
+	_destroy_texture_image(swapchain._device, &swapchain.depth_image)
 
 	for sem in swapchain.render_finished_semaphores {
 		vk.DestroySemaphore(swapchain._device, sem, nil)
@@ -95,7 +95,6 @@ _swapchain_destroy :: proc(swapchain: ^Swap_Chain) {
 	}
 
 	delete(swapchain.image_views)
-
 	delete(swapchain.images)
 
 	vk.DestroySwapchainKHR(swapchain._device, swapchain.swapchain, nil)
@@ -141,7 +140,7 @@ _swapchain_setup_color_resource :: proc(swapchain: ^Swap_Chain) {
 		vk.MemoryPropertyFlags{.DEVICE_LOCAL},
 	)
 
-	view := create_image_view(swapchain._device, image, color_format, {.COLOR}, 1)
+	view := _create_image_view(swapchain._device, image, color_format, {.COLOR}, 1)
 
 	swapchain.color_image = TextureImage {
 		image  = image,
@@ -168,7 +167,7 @@ _swapchain_setupt_depth_buffer :: proc(swapchain: ^Swap_Chain, command_buffer: v
 
 	_transition_image_layout(command_buffer, image, {.DEPTH}, format, .UNDEFINED, .DEPTH_STENCIL_ATTACHMENT_OPTIMAL, 1)
 
-	view := create_image_view(swapchain._device, image, format, {.DEPTH}, 1)
+	view := _create_image_view(swapchain._device, image, format, {.DEPTH}, 1)
 	swapchain.depth_image = TextureImage{image, view, memory}
 }
 
@@ -201,6 +200,8 @@ _swapchain_destroy_framebuffers :: proc(swapchain: ^Swap_Chain) {
 
 @(private = "file")
 _swapchain_setup_images :: proc(swapchain: ^Swap_Chain) {
+	swapchain.image_index = 0
+
 	count: u32
 	must(vk.GetSwapchainImagesKHR(swapchain._device, swapchain.swapchain, &count, nil))
 
@@ -209,7 +210,7 @@ _swapchain_setup_images :: proc(swapchain: ^Swap_Chain) {
 	must(vk.GetSwapchainImagesKHR(swapchain._device, swapchain.swapchain, &count, raw_data(swapchain.images)))
 
 	for image, i in swapchain.images {
-		swapchain.image_views[i] = create_image_view(swapchain._device, image, swapchain.format.format, {.COLOR}, 1)
+		swapchain.image_views[i] = _create_image_view(swapchain._device, image, swapchain.format.format, {.COLOR}, 1)
 	}
 }
 
@@ -225,6 +226,7 @@ _swapchain_setup_semaphores :: proc(swapchain: ^Swap_Chain) {
 }
 
 @(private = "file")
+@(require_results)
 _choose_swapchain_surface_format :: proc(formats: []vk.SurfaceFormatKHR) -> vk.SurfaceFormatKHR {
 	for format in formats {
 		if format.format == .B8G8R8A8_SRGB && format.colorSpace == .SRGB_NONLINEAR {
@@ -237,6 +239,7 @@ _choose_swapchain_surface_format :: proc(formats: []vk.SurfaceFormatKHR) -> vk.S
 }
 
 @(private = "file")
+@(require_results)
 _choose_swapchain_present_mode :: proc(modes: []vk.PresentModeKHR) -> vk.PresentModeKHR {
 	// We would like mailbox for the best tradeoff between tearing and latency.
 	for mode in modes {
@@ -251,6 +254,7 @@ _choose_swapchain_present_mode :: proc(modes: []vk.PresentModeKHR) -> vk.Present
 }
 
 @(private = "file")
+@(require_results)
 _choose_swapchain_extent :: proc(window: glfw.WindowHandle, capabilities: vk.SurfaceCapabilitiesKHR) -> vk.Extent2D {
 	if capabilities.currentExtent.width != max(u32) {
 		return capabilities.currentExtent

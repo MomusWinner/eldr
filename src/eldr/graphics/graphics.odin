@@ -11,6 +11,7 @@ import "vendor:glfw"
 import vk "vendor:vulkan"
 
 import "../common"
+import hm "../handle_map"
 
 // Enables Vulkan debug logging and validation layers.
 ENABLE_VALIDATION_LAYERS :: #config(ENABLE_VALIDATION_LAYERS, ODIN_DEBUG)
@@ -25,11 +26,24 @@ IMAGE_SAMPLER_DESCRIPTOR_MAX :: 30
 STORAGE_DESCRIPTOR_MAX :: 30
 DESCRIPTOR_SET_MAX :: 30
 
+Handle :: hm.Handle
+
 vec2 :: common.vec2
 vec3 :: common.vec3
 
 Vertex :: common.Vertex
 Image :: common.Image
+
+TextureImage :: struct {
+	image:  vk.Image,
+	view:   vk.ImageView,
+	memory: vk.DeviceMemory,
+}
+
+Texture :: struct {
+	image:   TextureImage,
+	sampler: vk.Sampler,
+}
 
 Buffer :: struct {
 	buffer: vk.Buffer,
@@ -73,7 +87,6 @@ Pipeline_Set_Info :: struct {
 }
 
 Create_Pipeline_Info :: struct {
-	name:                     string,
 	set_infos:                []Pipeline_Set_Info,
 	stage_infos:              []Pipeline_Stage_Info,
 	vertex_input_description: struct {
@@ -107,15 +120,31 @@ Create_Pipeline_Info :: struct {
 	},
 }
 
+Create_Compute_Pipeline_Info :: struct {
+	set_infos:   []Pipeline_Set_Info,
+	shader_path: string,
+}
+
 Pipeline :: struct {
 	pipeline:               vk.Pipeline,
-	create_info:            ^Create_Pipeline_Info,
 	layout:                 vk.PipelineLayout,
 	descriptor_set_layouts: []vk.DescriptorSetLayout,
 }
 
+Graphics_Pipeline :: struct {
+	using base:  Pipeline,
+	create_info: ^Create_Pipeline_Info,
+}
+
+Compute_Pipeline :: struct {
+	using base:  Pipeline,
+	create_info: ^Create_Compute_Pipeline_Info,
+}
+
 Pipeline_Manager :: struct {
-	pipeline_by_name: map[string]^Pipeline,
+	pipelines:         hm.Handle_Map(Graphics_Pipeline),
+	compute_pipelines: hm.Handle_Map(Compute_Pipeline),
+	allocator:         runtime.Allocator,
 }
 
 Swap_Chain :: struct {
@@ -125,6 +154,7 @@ Swap_Chain :: struct {
 	samples:                    vk.SampleCountFlags,
 	color_image:                TextureImage,
 	depth_image:                TextureImage,
+	image_index:                u32,
 	images:                     []vk.Image,
 	image_views:                []vk.ImageView,
 	frame_buffers:              []vk.Framebuffer,
@@ -148,18 +178,16 @@ Graphics :: struct {
 	surface:                   vk.SurfaceKHR,
 	// Queue
 	graphics_queue:            vk.Queue,
-	present_queue:             vk.Queue,
-	// Swap chain 
+	present_queue:             vk.Queue, // Swap chain 
 	swapchain:                 ^Swap_Chain,
-	image_index:               u32,
 	render_pass:               vk.RenderPass,
 	// Pipeline
 	pipeline_manager:          ^Pipeline_Manager,
 	descriptor_pool:           vk.DescriptorPool,
 	// Command pool
 	command_pool:              vk.CommandPool,
-	command_buffer:            vk.CommandBuffer,
-	// Semaphores
+	draw_cb:                   vk.CommandBuffer,
+	// Sync
 	image_available_semaphore: vk.Semaphore,
 	fence:                     vk.Fence,
 	// Flags
@@ -171,6 +199,11 @@ BeginRenderError :: enum {
 	None,
 	OutOfDate,
 	NotEnded,
+}
+
+Render_Frame :: struct {
+	state:       bool,
+	image_index: u32,
 }
 
 get_screen_size :: proc(g: ^Graphics) -> (width: u32, height: u32) {
@@ -196,7 +229,7 @@ begin_render :: proc(g: ^Graphics) -> BeginRenderError {
 		timeout = max(u64),
 		semaphore = g.image_available_semaphore,
 		fence = {},
-		pImageIndex = &g.image_index,
+		pImageIndex = &g.swapchain.image_index,
 	)
 
 	#partial switch acquire_result {
@@ -206,16 +239,16 @@ begin_render :: proc(g: ^Graphics) -> BeginRenderError {
 
 	case .SUCCESS, .SUBOPTIMAL_KHR:
 	case:
-		log.panicf("vulkan: acquire next image failure: %v", acquire_result)
+		log.panicf("acquire next image failure: %v", acquire_result)
 	}
 
 	must(vk.ResetFences(g.device, 1, &g.fence))
-	must(vk.ResetCommandBuffer(g.command_buffer, {}))
+	must(vk.ResetCommandBuffer(g.draw_cb, {}))
 
 	begin_info := vk.CommandBufferBeginInfo {
 		sType = .COMMAND_BUFFER_BEGIN_INFO,
 	}
-	must(vk.BeginCommandBuffer(g.command_buffer, &begin_info))
+	must(vk.BeginCommandBuffer(g.draw_cb, &begin_info))
 
 	clear_values := [2]vk.ClearValue{}
 	clear_values[0].color.float32 = {0.0, 0.0, 0.0, 1.0}
@@ -224,12 +257,12 @@ begin_render :: proc(g: ^Graphics) -> BeginRenderError {
 	render_pass_info := vk.RenderPassBeginInfo {
 		sType = .RENDER_PASS_BEGIN_INFO,
 		renderPass = g.render_pass,
-		framebuffer = g.swapchain.frame_buffers[g.image_index],
+		framebuffer = g.swapchain.frame_buffers[g.swapchain.image_index],
 		renderArea = {extent = g.swapchain.extent},
 		clearValueCount = len(clear_values),
 		pClearValues = raw_data(&clear_values),
 	}
-	vk.CmdBeginRenderPass(g.command_buffer, &render_pass_info, .INLINE)
+	vk.CmdBeginRenderPass(g.draw_cb, &render_pass_info, .INLINE)
 
 	return .None
 }
@@ -238,9 +271,10 @@ end_render :: proc(g: ^Graphics, wait_semaphores: []vk.Semaphore, wait_stages: [
 	if !g.render_started {
 		log.error("Call begin_render() before end_render()")
 	}
+	assert(len(wait_semaphores) == len(wait_stages))
 
-	vk.CmdEndRenderPass(g.command_buffer)
-	must(vk.EndCommandBuffer(g.command_buffer))
+	vk.CmdEndRenderPass(g.draw_cb)
+	must(vk.EndCommandBuffer(g.draw_cb))
 
 	// wait_semaphores := append(&wait_semaphores, g.image_available_semaphore)
 	required_wait_semaphores := concat(wait_semaphores, []vk.Semaphore{g.image_available_semaphore})
@@ -255,19 +289,19 @@ end_render :: proc(g: ^Graphics, wait_semaphores: []vk.Semaphore, wait_stages: [
 		pWaitSemaphores      = raw_data(required_wait_semaphores),
 		pWaitDstStageMask    = raw_data(required_wait_stages),
 		commandBufferCount   = 1,
-		pCommandBuffers      = &g.command_buffer,
+		pCommandBuffers      = &g.draw_cb,
 		signalSemaphoreCount = 1,
-		pSignalSemaphores    = &g.swapchain.render_finished_semaphores[g.image_index],
+		pSignalSemaphores    = &g.swapchain.render_finished_semaphores[g.swapchain.image_index],
 	}
 	must(vk.QueueSubmit(g.graphics_queue, 1, &submit_info, g.fence))
 
 	present_info := vk.PresentInfoKHR {
 		sType              = .PRESENT_INFO_KHR,
 		waitSemaphoreCount = 1,
-		pWaitSemaphores    = &g.swapchain.render_finished_semaphores[g.image_index],
+		pWaitSemaphores    = &g.swapchain.render_finished_semaphores[g.swapchain.image_index],
 		swapchainCount     = 1,
 		pSwapchains        = &g.swapchain.swapchain,
-		pImageIndices      = &g.image_index,
+		pImageIndices      = &g.swapchain.image_index,
 	}
 	present_result := vk.QueuePresentKHR(g.present_queue, &present_info)
 

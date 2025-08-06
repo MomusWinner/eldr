@@ -13,7 +13,7 @@ import vk "vendor:vulkan"
 
 
 _find_depth_format :: proc(physical_device: vk.PhysicalDevice) -> vk.Format {
-	return find_supported_format(
+	return _find_supported_format(
 		physical_device,
 		{.D32_SFLOAT, .D32_SFLOAT_S8_UINT, .D24_UNORM_S8_UINT},
 		.OPTIMAL,
