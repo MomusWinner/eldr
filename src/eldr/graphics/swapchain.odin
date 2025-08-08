@@ -8,11 +8,13 @@ import "core:strings"
 
 import "vendor:glfw"
 import vk "vendor:vulkan"
+import "vma"
 
 @(private)
 @(require_results)
 _swapchain_new :: proc(
 	window: glfw.WindowHandle,
+	allocator: vma.Allocator,
 	physical_device: vk.PhysicalDevice,
 	device: vk.Device,
 	surface: vk.SurfaceKHR,
@@ -66,6 +68,7 @@ _swapchain_new :: proc(
 	swapchain._device = device
 	swapchain._physical_device = physical_device
 	swapchain._surface = surface
+	swapchain._allocator = allocator
 	_swapchain_setup_images(swapchain)
 	_swapchain_setup_semaphores(swapchain)
 
@@ -82,8 +85,8 @@ _swapchain_setup :: proc(swapchain: ^Swap_Chain, render_pass: vk.RenderPass, com
 @(private)
 _swapchain_destroy :: proc(swapchain: ^Swap_Chain) {
 	_swapchain_destroy_framebuffers(swapchain)
-	_destroy_texture_image(swapchain._device, &swapchain.color_image)
-	_destroy_texture_image(swapchain._device, &swapchain.depth_image)
+	_destroy_texture_from_device(swapchain._device, swapchain._allocator, &swapchain.color_image)
+	_destroy_texture_from_device(swapchain._device, swapchain._allocator, &swapchain.depth_image)
 
 	for sem in swapchain.render_finished_semaphores {
 		vk.DestroySemaphore(swapchain._device, sem, nil)
@@ -116,20 +119,21 @@ _recreate_swapchain :: proc(g: ^Graphics) {
 
 	_swapchain_destroy(g.swapchain)
 
-	g.swapchain = _swapchain_new(g.window, g.physical_device, g.device, g.surface, g.msaa_samples)
+	g.swapchain = _swapchain_new(g.window, g.allocator, g.physical_device, g.device, g.surface, g.msaa_samples)
 
-	sc := _begin_single_command(g)
+	sc := _cmd_single_begin(g)
 	_swapchain_setup(g.swapchain, g.render_pass, sc.command_buffer)
-	_end_single_command(sc)
+	_cmd_single_end(sc)
 }
 
 @(private = "file")
 _swapchain_setup_color_resource :: proc(swapchain: ^Swap_Chain) {
 	color_format := swapchain.format.format
 
-	image, memory := _create_image(
+	image, allocation, allocation_info := _create_image(
 		swapchain._device,
 		swapchain._physical_device,
+		swapchain._allocator,
 		swapchain.extent.width,
 		swapchain.extent.height,
 		1,
@@ -137,24 +141,27 @@ _swapchain_setup_color_resource :: proc(swapchain: ^Swap_Chain) {
 		color_format,
 		vk.ImageTiling.OPTIMAL,
 		vk.ImageUsageFlags{.TRANSIENT_ATTACHMENT, .COLOR_ATTACHMENT},
-		vk.MemoryPropertyFlags{.DEVICE_LOCAL},
+		vma.MemoryUsage.AUTO_PREFER_DEVICE,
+		vma.AllocationCreateFlags{},
 	)
 
 	view := _create_image_view(swapchain._device, image, color_format, {.COLOR}, 1)
 
-	swapchain.color_image = TextureImage {
-		image  = image,
-		view   = view,
-		memory = memory,
+	swapchain.color_image = Texture {
+		image           = image,
+		view            = view,
+		allocation      = allocation,
+		allocation_info = allocation_info,
 	}
 }
 
 @(private = "file")
 _swapchain_setupt_depth_buffer :: proc(swapchain: ^Swap_Chain, command_buffer: vk.CommandBuffer) {
 	format := _find_depth_format(swapchain._physical_device)
-	image, memory := _create_image(
+	image, allocation, allocation_info := _create_image(
 		swapchain._device,
 		swapchain._physical_device,
+		swapchain._allocator,
 		swapchain.extent.width,
 		swapchain.extent.height,
 		1,
@@ -162,13 +169,19 @@ _swapchain_setupt_depth_buffer :: proc(swapchain: ^Swap_Chain, command_buffer: v
 		format,
 		vk.ImageTiling.OPTIMAL,
 		vk.ImageUsageFlags{.DEPTH_STENCIL_ATTACHMENT},
-		vk.MemoryPropertyFlags{.DEVICE_LOCAL},
+		vma.MemoryUsage.AUTO_PREFER_DEVICE,
+		vma.AllocationCreateFlags{},
 	)
 
 	_transition_image_layout(command_buffer, image, {.DEPTH}, format, .UNDEFINED, .DEPTH_STENCIL_ATTACHMENT_OPTIMAL, 1)
 
 	view := _create_image_view(swapchain._device, image, format, {.DEPTH}, 1)
-	swapchain.depth_image = TextureImage{image, view, memory}
+	swapchain.depth_image = Texture {
+		image           = image,
+		view            = view,
+		allocation      = allocation,
+		allocation_info = allocation_info,
+	}
 }
 
 @(private = "file")

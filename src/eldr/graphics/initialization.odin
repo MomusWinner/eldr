@@ -1,12 +1,10 @@
 package graphics
 
 import "base:runtime"
-
 import "core:log"
+import "core:os"
 import "core:slice"
 import "core:strings"
-
-import "core:os"
 import "vendor:glfw"
 import vk "vendor:vulkan"
 import "vma"
@@ -36,7 +34,7 @@ init_graphic :: proc(g: ^Graphics, window: glfw.WindowHandle) {
 	_pick_physical_device(g)
 	_create_logical_device(g)
 	_create_vma_allocator(g)
-	g.swapchain = _swapchain_new(g.window, g.physical_device, g.device, g.surface, g.msaa_samples)
+	g.swapchain = _swapchain_new(g.window, g.allocator, g.physical_device, g.device, g.surface, g.msaa_samples)
 	_create_render_pass(g)
 	_create_descriptor_pool(g)
 
@@ -44,9 +42,9 @@ init_graphic :: proc(g: ^Graphics, window: glfw.WindowHandle) {
 	_create_draw_command_buffers(g)
 	_create_sync_obj(g)
 
-	sc := _begin_single_command(g)
+	sc := _cmd_single_begin(g)
 	_swapchain_setup(g.swapchain, g.render_pass, sc.command_buffer)
-	_end_single_command(sc)
+	_cmd_single_end(sc)
 }
 
 destroy_graphic :: proc(g: ^Graphics) {
@@ -55,6 +53,7 @@ destroy_graphic :: proc(g: ^Graphics) {
 	_destroy_descriptor_pool(g)
 	_destroy_render_pass(g)
 	_swapchain_destroy(g.swapchain)
+	vma.DestroyAllocator(g.allocator)
 	_pipeline_manager_destroy(g.pipeline_manager, g.device)
 	_destroy_logical_device(g)
 	_destroy_surface(g)
@@ -501,7 +500,7 @@ _create_draw_command_buffers :: proc(g: ^Graphics) {
 		level              = .PRIMARY,
 		commandBufferCount = 1,
 	}
-	must(vk.AllocateCommandBuffers(g.device, &alloc_info, &g.draw_cb))
+	must(vk.AllocateCommandBuffers(g.device, &alloc_info, &g.cmd))
 }
 
 @(private = "file")

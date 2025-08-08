@@ -114,19 +114,19 @@ particle_scene_draw :: proc(s: ^Scene) {
 		height   = f32(e.g.swapchain.extent.height),
 		maxDepth = 1.0,
 	}
-	vk.CmdSetViewport(e.g.draw_cb, 0, 1, &viewport)
+	vk.CmdSetViewport(e.g.cmd, 0, 1, &viewport)
 
 	scissor := vk.Rect2D {
 		extent = e.g.swapchain.extent,
 	}
-	vk.CmdSetScissor(e.g.draw_cb, 0, 1, &scissor)
+	vk.CmdSetScissor(e.g.cmd, 0, 1, &scissor)
 
 	draw_pipeline, _ := gfx.get_graphics_pipeline(e.g, data.draw_pipeline_h)
 	gfx.bind_pipeline(e.g, draw_pipeline)
 	offset := vk.DeviceSize{}
-	vk.CmdBindVertexBuffers(e.g.draw_cb, 0, 1, &data.ssbo.buffer, &offset)
+	vk.CmdBindVertexBuffers(e.g.cmd, 0, 1, &data.ssbo.buffer, &offset)
 	gfx.bind_descriptor_set(e.g, draw_pipeline, &data.draw_descriptor_set)
-	vk.CmdDraw(e.g.draw_cb, PARTICLE_COUNT, 1, 0, 0)
+	vk.CmdDraw(e.g.cmd, PARTICLE_COUNT, 1, 0, 0)
 
 	// End gfx. ------------------------------
 	gfx.end_render(e.g, []vk.Semaphore{data.semaphore}, {{.VERTEX_INPUT}})

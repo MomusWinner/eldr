@@ -37,25 +37,23 @@ vec3 :: common.vec3
 Vertex :: common.Vertex
 Image :: common.Image
 
-TextureImage :: struct {
-	image:  vk.Image,
-	view:   vk.ImageView,
-	memory: vk.DeviceMemory,
-}
-
 Texture :: struct {
-	image:   TextureImage,
-	sampler: vk.Sampler,
+	image:           vk.Image,
+	view:            vk.ImageView,
+	sampler:         vk.Sampler,
+	allocation:      vma.Allocation,
+	allocation_info: vma.AllocationInfo,
 }
 
 Buffer :: struct {
-	buffer: vk.Buffer,
-	memory: vk.DeviceMemory,
+	buffer:          vk.Buffer,
+	allocation:      vma.Allocation,
+	allocation_info: vma.AllocationInfo,
 }
 
 Uniform_Buffer :: struct {
-	using parent: Buffer,
-	mapped:       rawptr,
+	using base: Buffer,
+	mapped:     rawptr,
 }
 
 Vertex_Input_Binding_Description :: vk.VertexInputBindingDescription
@@ -155,13 +153,14 @@ Swap_Chain :: struct {
 	format:                     vk.SurfaceFormatKHR,
 	extent:                     vk.Extent2D,
 	samples:                    vk.SampleCountFlags,
-	color_image:                TextureImage,
-	depth_image:                TextureImage,
+	color_image:                Texture,
+	depth_image:                Texture,
 	image_index:                u32,
 	images:                     []vk.Image,
 	image_views:                []vk.ImageView,
 	frame_buffers:              []vk.Framebuffer,
 	render_finished_semaphores: []vk.Semaphore,
+	_allocator:                 vma.Allocator,
 	_device:                    vk.Device,
 	_physical_device:           vk.PhysicalDevice,
 	_surface:                   vk.SurfaceKHR,
@@ -191,7 +190,7 @@ Graphics :: struct {
 	descriptor_pool:           vk.DescriptorPool,
 	// Command pool
 	command_pool:              vk.CommandPool,
-	draw_cb:                   vk.CommandBuffer,
+	cmd:                       vk.CommandBuffer,
 	// Sync
 	image_available_semaphore: vk.Semaphore,
 	fence:                     vk.Fence,
@@ -248,12 +247,12 @@ begin_render :: proc(g: ^Graphics) -> BeginRenderError {
 	}
 
 	must(vk.ResetFences(g.device, 1, &g.fence))
-	must(vk.ResetCommandBuffer(g.draw_cb, {}))
+	must(vk.ResetCommandBuffer(g.cmd, {}))
 
 	begin_info := vk.CommandBufferBeginInfo {
 		sType = .COMMAND_BUFFER_BEGIN_INFO,
 	}
-	must(vk.BeginCommandBuffer(g.draw_cb, &begin_info))
+	must(vk.BeginCommandBuffer(g.cmd, &begin_info))
 
 	clear_values := [2]vk.ClearValue{}
 	clear_values[0].color.float32 = {0.0, 0.0, 0.0, 1.0}
@@ -267,7 +266,7 @@ begin_render :: proc(g: ^Graphics) -> BeginRenderError {
 		clearValueCount = len(clear_values),
 		pClearValues = raw_data(&clear_values),
 	}
-	vk.CmdBeginRenderPass(g.draw_cb, &render_pass_info, .INLINE)
+	vk.CmdBeginRenderPass(g.cmd, &render_pass_info, .INLINE)
 
 	return .None
 }
@@ -278,8 +277,8 @@ end_render :: proc(g: ^Graphics, wait_semaphores: []vk.Semaphore, wait_stages: [
 	}
 	assert(len(wait_semaphores) == len(wait_stages))
 
-	vk.CmdEndRenderPass(g.draw_cb)
-	must(vk.EndCommandBuffer(g.draw_cb))
+	vk.CmdEndRenderPass(g.cmd)
+	must(vk.EndCommandBuffer(g.cmd))
 
 	// wait_semaphores := append(&wait_semaphores, g.image_available_semaphore)
 	required_wait_semaphores := concat(wait_semaphores, []vk.Semaphore{g.image_available_semaphore})
@@ -294,7 +293,7 @@ end_render :: proc(g: ^Graphics, wait_semaphores: []vk.Semaphore, wait_stages: [
 		pWaitSemaphores      = raw_data(required_wait_semaphores),
 		pWaitDstStageMask    = raw_data(required_wait_stages),
 		commandBufferCount   = 1,
-		pCommandBuffers      = &g.draw_cb,
+		pCommandBuffers      = &g.cmd,
 		signalSemaphoreCount = 1,
 		pSignalSemaphores    = &g.swapchain.render_finished_semaphores[g.swapchain.image_index],
 	}

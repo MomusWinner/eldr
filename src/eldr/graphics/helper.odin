@@ -3,70 +3,24 @@ package graphics
 import vk "vendor:vulkan"
 
 @(private)
-SingleCommand :: struct {
-	command_buffer: vk.CommandBuffer,
-	_device:        vk.Device,
-	_command_pool:  vk.CommandPool,
-	_queue:         vk.Queue,
-}
+_find_memory_type :: proc(
+	physical_device: vk.PhysicalDevice,
+	type_filter: u32,
+	properties: vk.MemoryPropertyFlags,
+) -> (
+	memory_type: u32,
+	ok: bool,
+) {
+	mem_property: vk.PhysicalDeviceMemoryProperties
+	vk.GetPhysicalDeviceMemoryProperties(physical_device, &mem_property)
 
-@(private)
-_begin_single_command :: proc {
-	_begin_single_command_from_device,
-	_begin_single_command_from_graphics,
-}
-
-@(private)
-_begin_single_command_from_graphics :: proc(g: ^Graphics) -> SingleCommand {
-	return _begin_single_command_from_device(g.device, g.command_pool, g.graphics_queue)
-}
-
-@(private)
-_begin_single_command_from_device :: proc(
-	device: vk.Device,
-	command_pool: vk.CommandPool,
-	queue: vk.Queue,
-) -> SingleCommand {
-	alloc_info := vk.CommandBufferAllocateInfo {
-		sType              = .COMMAND_BUFFER_ALLOCATE_INFO,
-		level              = .PRIMARY,
-		commandPool        = command_pool,
-		commandBufferCount = 1,
+	for i: u32 = 0; i < mem_property.memoryTypeCount; i += 1 {
+		if (type_filter & (1 << i) != 0) && (mem_property.memoryTypes[i].propertyFlags >= properties) {
+			return i, true
+		}
 	}
 
-	command_buffer: vk.CommandBuffer
-	must(vk.AllocateCommandBuffers(device, &alloc_info, &command_buffer))
-
-	begin_info := vk.CommandBufferBeginInfo {
-		sType = .COMMAND_BUFFER_BEGIN_INFO,
-		flags = {.ONE_TIME_SUBMIT},
-	}
-	must(vk.BeginCommandBuffer(command_buffer, &begin_info))
-
-	return SingleCommand {
-		command_buffer = command_buffer,
-		_device = device,
-		_command_pool = command_pool,
-		_queue = queue,
-	}
-}
-
-@(private)
-_end_single_command :: proc(single_command: SingleCommand) {
-	command_buffer := single_command.command_buffer
-
-	must(vk.EndCommandBuffer(command_buffer))
-
-	submit_info := vk.SubmitInfo {
-		sType              = .SUBMIT_INFO,
-		commandBufferCount = 1,
-		pCommandBuffers    = &command_buffer,
-	}
-
-	must(vk.QueueSubmit(single_command._queue, 1, &submit_info, 0))
-	must(vk.QueueWaitIdle(single_command._queue))
-
-	vk.FreeCommandBuffers(single_command._device, single_command._command_pool, 1, &command_buffer)
+	return 0, false
 }
 
 @(private)

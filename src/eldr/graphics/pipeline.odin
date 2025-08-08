@@ -43,11 +43,11 @@ destroy_compute_pipeline :: proc(device: vk.Device, pipeline: ^Compute_Pipeline)
 }
 
 bind_pipeline :: proc(g: ^Graphics, pipeline: ^Pipeline) {
-	vk.CmdBindPipeline(g.draw_cb, .GRAPHICS, pipeline.pipeline)
+	vk.CmdBindPipeline(g.cmd, .GRAPHICS, pipeline.pipeline)
 }
 
 bind_descriptor_set :: proc(g: ^Graphics, pipeline: ^Pipeline, descriptor_set: [^]vk.DescriptorSet) {
-	vk.CmdBindDescriptorSets(g.draw_cb, .GRAPHICS, pipeline.layout, 0, 1, descriptor_set, 0, nil)
+	vk.CmdBindDescriptorSets(g.cmd, .GRAPHICS, pipeline.layout, 0, 1, descriptor_set, 0, nil)
 }
 
 @(require_results)
@@ -145,7 +145,7 @@ _create_descriptor_set :: proc(
 		case Texture:
 			descriptor_image_info := new(vk.DescriptorImageInfo, context.temp_allocator)
 			descriptor_image_info.imageLayout = .SHADER_READ_ONLY_OPTIMAL
-			descriptor_image_info.imageView = r.image.view
+			descriptor_image_info.imageView = r.view
 			descriptor_image_info.sampler = r.sampler
 
 			write_descriptor_sets[i] = vk.WriteDescriptorSet {

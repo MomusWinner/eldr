@@ -1,16 +1,7 @@
 #+private
 package graphics
 
-import "base:intrinsics"
-import "base:runtime"
-
-import "core:log"
-import "core:slice"
-import "core:strings"
-
-import "vendor:glfw"
 import vk "vendor:vulkan"
-
 
 _find_depth_format :: proc(physical_device: vk.PhysicalDevice) -> vk.Format {
 	return _find_supported_format(

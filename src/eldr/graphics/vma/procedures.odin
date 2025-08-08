@@ -102,7 +102,7 @@ foreign VulkanMemoryAllocator {
 	SetAllocationUserData :: proc(allocator: Allocator, allocation: Allocation, pUserData: rawptr) ---
 	SetAllocationName :: proc(allocator: Allocator, allocation: Allocation, pName: cstring) ---
 	GetAllocationMemoryProperties :: proc(allocator: Allocator, allocation: Allocation, pFlags: ^vk.MemoryPropertyFlags) ---
-	MapMemory :: proc(allocator: Allocator, allocation: Allocation, ppData: ^rawptr) -> vk.Result ---
+	CopyMemoryToAllocation :: proc(allocator: Allocator, src_data: rawptr, dst_allocation: Allocation, dst_offset: vk.DeviceSize, size: vk.DeviceSize) -> vk.Result ---;MapMemory :: proc(allocator: Allocator, allocation: Allocation, ppData: ^rawptr) -> vk.Result ---
 	UnmapMemory :: proc(allocator: Allocator, allocation: Allocation) ---
 	FlushAllocation :: proc(allocator: Allocator, allocation: Allocation, offset: vk.DeviceSize, size: vk.DeviceSize) -> vk.Result ---
 	InvalidateAllocation :: proc(allocator: Allocator, allocation: Allocation, offset: vk.DeviceSize, size: vk.DeviceSize) -> vk.Result ---

@@ -56,6 +56,9 @@ room_scene_init :: proc(s: ^Scene) {
 }
 
 room_scene_update :: proc(s: ^Scene, dt: f64) {
+	e := s.e
+	data := cast(^RoomSceneData)s.data
+	update_unfiform_buffer(&data.room_ubo, s.e.g.swapchain.extent)
 }
 
 room_scene_draw :: proc(s: ^Scene) {
@@ -72,21 +75,21 @@ room_scene_draw :: proc(s: ^Scene) {
 		height   = f32(e.g.swapchain.extent.height),
 		maxDepth = 1.0,
 	}
-	vk.CmdSetViewport(e.g.draw_cb, 0, 1, &viewport)
+	vk.CmdSetViewport(e.g.cmd, 0, 1, &viewport)
 
 	scissor := vk.Rect2D {
 		extent = e.g.swapchain.extent,
 	}
-	vk.CmdSetScissor(e.g.draw_cb, 0, 1, &scissor)
+	vk.CmdSetScissor(e.g.cmd, 0, 1, &scissor)
 
 	gfx.bind_pipeline(e.g, pipeline)
 
 	offset := vk.DeviceSize{}
-	vk.CmdBindVertexBuffers(e.g.draw_cb, 0, 1, &data.room_model.vbo.buffer, &offset)
-	vk.CmdBindIndexBuffer(e.g.draw_cb, data.room_model.ebo.buffer, 0, .UINT16)
+	vk.CmdBindVertexBuffers(e.g.cmd, 0, 1, &data.room_model.vbo.buffer, &offset)
+	vk.CmdBindIndexBuffer(e.g.cmd, data.room_model.ebo.buffer, 0, .UINT16)
 
 	gfx.bind_descriptor_set(e.g, pipeline, &data.descriptor_set)
-	vk.CmdDrawIndexed(e.g.draw_cb, cast(u32)len(data.room_model.indices), 1, 0, 0, 0)
+	vk.CmdDrawIndexed(e.g.cmd, cast(u32)len(data.room_model.indices), 1, 0, 0, 0)
 
 	// End gfx. ------------------------------
 	gfx.end_render(e.g, []vk.Semaphore{}, {})
@@ -133,5 +136,5 @@ update_unfiform_buffer :: proc(buffer: ^gfx.Uniform_Buffer, extend: vk.Extent2D)
 	// NOTE: GLM was originally designed for OpenGL, where the Y coordinate of the clip coordinates is inverted
 	ubo.projection[1][1] *= -1
 
-	runtime.mem_copy(buffer.mapped, &ubo, size_of(ubo))
+	runtime.mem_copy(buffer.mapped, &ubo, size_of(ubo)) // TODO: create special function
 }

@@ -2,90 +2,83 @@ package graphics
 
 import "base:intrinsics"
 import "base:runtime"
-
 import "core:log"
 import "core:slice"
 import "core:strings"
-
 import "vendor:glfw"
 import vk "vendor:vulkan"
-
-find_memory_type :: proc(
-	physical_device: vk.PhysicalDevice,
-	type_filter: u32,
-	properties: vk.MemoryPropertyFlags,
-) -> (
-	memory_type: u32,
-	ok: bool,
-) {
-	mem_property: vk.PhysicalDeviceMemoryProperties
-	vk.GetPhysicalDeviceMemoryProperties(physical_device, &mem_property)
-
-	for i: u32 = 0; i < mem_property.memoryTypeCount; i += 1 {
-		if (type_filter & (1 << i) != 0) && (mem_property.memoryTypes[i].propertyFlags >= properties) {
-			return i, true
-		}
-	}
-
-	return 0, false
-}
-
-create_buffer :: proc(
-	g: ^Graphics,
-	size: vk.DeviceSize,
-	usage: vk.BufferUsageFlags,
-	properties: vk.MemoryPropertyFlags,
-) -> Buffer {
-	buffer_info := vk.BufferCreateInfo {
-		sType       = .BUFFER_CREATE_INFO,
-		size        = size,
-		usage       = usage,
-		sharingMode = .EXCLUSIVE,
-	}
-
-	buffer: Buffer
-	must(vk.CreateBuffer(g.device, &buffer_info, nil, &buffer.buffer))
-
-	mem_requirements: vk.MemoryRequirements
-	vk.GetBufferMemoryRequirements(g.device, buffer.buffer, &mem_requirements)
-
-	memory_type, ok := find_memory_type(g.physical_device, mem_requirements.memoryTypeBits, properties)
-	if !ok {
-		log.fatal("Failed to find suitable memory type!")
-	}
-
-	alloc_info := vk.MemoryAllocateInfo {
-		sType           = .MEMORY_ALLOCATE_INFO,
-		allocationSize  = mem_requirements.size,
-		memoryTypeIndex = memory_type,
-	}
-
-	if vk.AllocateMemory(g.device, &alloc_info, nil, &buffer.memory) != .SUCCESS {
-		log.fatal("Failed to allocate buffer memory")
-	}
-
-	vk.BindBufferMemory(g.device, buffer.buffer, buffer.memory, 0)
-
-	return buffer
-}
+import "vma"
 
 destroy_buffer :: proc(g: ^Graphics, buffer: ^Buffer) {
-	vk.DestroyBuffer(g.device, buffer.buffer, nil)
-	vk.FreeMemory(g.device, buffer.memory, nil)
-	buffer.buffer = 0
-	buffer.memory = 0
+	vma.DestroyBuffer(g.allocator, buffer.buffer, buffer.allocation)
 }
 
-fill_buffer :: proc(g: ^Graphics, buffer: Buffer, buffer_size: vk.DeviceSize, vertices: rawptr) {
-	data: rawptr
-	vk.MapMemory(g.device, buffer.memory, 0, buffer_size, {}, &data)
-	intrinsics.mem_copy(data, vertices, buffer_size)
-	vk.UnmapMemory(g.device, buffer.memory)
+create_vertex_buffer :: proc(g: ^Graphics, vertices: rawptr, size: vk.DeviceSize) -> Buffer {
+	return _create_device_local_buffer(g, size, vertices, {.VERTEX_BUFFER}, {.SHADER_READ}, {.VERTEX_SHADER})
 }
 
+create_index_buffer :: proc(g: ^Graphics, indices: rawptr, size: vk.DeviceSize) -> Buffer {
+	return _create_device_local_buffer(g, size, indices, {.INDEX_BUFFER}, {.INDEX_READ}, {.VERTEX_INPUT})
+}
 
-copy_buffer :: proc(g: ^Graphics, src_buffer: Buffer, dst_buffer: Buffer, device_size: vk.DeviceSize) {
-	sc := _begin_single_command(g)
+create_uniform_buffer :: proc(g: ^Graphics, size: vk.DeviceSize) -> Uniform_Buffer {
+	buffer, mapped := _create_mapped_buffer(g, size, {.UNIFORM_BUFFER}, {.UNIFORM_READ}, {.VERTEX_SHADER})
+	uniform_buffer := Uniform_Buffer {
+		base   = buffer,
+		mapped = mapped,
+	}
+
+	return uniform_buffer
+}
+
+destroy_uniform_buffer :: proc(g: ^Graphics, uniform_buffer: ^Uniform_Buffer) {
+	vma.UnmapMemory(g.allocator, uniform_buffer.allocation)
+	destroy_buffer(g, &uniform_buffer.base)
+	uniform_buffer.mapped = nil
+}
+
+// TODO: only for particle
+create_ssbo :: proc(g: ^Graphics, data: rawptr, size: vk.DeviceSize) -> Buffer {
+	return _create_device_local_buffer(
+		g,
+		size,
+		data,
+		{.VERTEX_BUFFER, .STORAGE_BUFFER},
+		{.SHADER_READ},
+		{.VERTEX_SHADER},
+	)
+}
+
+@(private)
+_fill_buffer :: proc(g: ^Graphics, buffer: Buffer, buffer_size: vk.DeviceSize, data: rawptr) {
+	vma.CopyMemoryToAllocation(g.allocator, data, buffer.allocation, 0, buffer_size)
+}
+
+@(private)
+_copy_buffer :: proc {
+	_copy_buffer_from_cmd,
+	_copy_buffer_from_default,
+}
+
+@(private)
+_copy_buffer_from_cmd :: proc(
+	g: ^Graphics,
+	cb: vk.CommandBuffer,
+	src_buffer: Buffer,
+	dst_buffer: Buffer,
+	device_size: vk.DeviceSize,
+) {
+	copy := vk.BufferCopy {
+		srcOffset = 0,
+		dstOffset = 0,
+		size      = device_size,
+	}
+	vk.CmdCopyBuffer(cb, src_buffer.buffer, dst_buffer.buffer, 1, &copy)
+}
+
+@(private)
+_copy_buffer_from_default :: proc(g: ^Graphics, src_buffer: Buffer, dst_buffer: Buffer, device_size: vk.DeviceSize) {
+	sc := _cmd_single_begin(g)
 
 	copy := vk.BufferCopy {
 		srcOffset = 0,
@@ -94,58 +87,93 @@ copy_buffer :: proc(g: ^Graphics, src_buffer: Buffer, dst_buffer: Buffer, device
 	}
 	vk.CmdCopyBuffer(sc.command_buffer, src_buffer.buffer, dst_buffer.buffer, 1, &copy)
 
-	_end_single_command(sc)
+	_cmd_single_end(sc)
 }
 
-create_vertex_buffer :: proc(g: ^Graphics, vertices: rawptr, size: vk.DeviceSize) -> Buffer {
-	staging_buffer := create_buffer(g, size, {.TRANSFER_SRC}, {.HOST_VISIBLE, .HOST_COHERENT})
-	fill_buffer(g, staging_buffer, size, vertices)
-
-	vertex_buffer := create_buffer(g, size, {.TRANSFER_DST, .VERTEX_BUFFER}, {.DEVICE_LOCAL})
-	copy_buffer(g, staging_buffer, vertex_buffer, size)
-
-	destroy_buffer(g, &staging_buffer)
-
-	return vertex_buffer
-}
-
-create_index_buffer :: proc(g: ^Graphics, indices: rawptr, size: vk.DeviceSize) -> Buffer {
-	staging_buffer := create_buffer(g, size, {.TRANSFER_SRC}, {.HOST_VISIBLE, .HOST_COHERENT})
-	fill_buffer(g, staging_buffer, size, indices)
-
-	index_buffer := create_buffer(g, size, {.TRANSFER_DST, .INDEX_BUFFER}, {.DEVICE_LOCAL})
-	copy_buffer(g, staging_buffer, index_buffer, size)
-
-	destroy_buffer(g, &staging_buffer)
-
-	return index_buffer
-}
-
-create_uniform_buffer :: proc(g: ^Graphics, size: vk.DeviceSize) -> Uniform_Buffer {
-	unfiorm_buffer := Uniform_Buffer {
-		parent = create_buffer(g, size, {.UNIFORM_BUFFER}, {.HOST_COHERENT, .HOST_VISIBLE}),
+@(private)
+_create_buffer :: proc(
+	g: ^Graphics,
+	size: vk.DeviceSize,
+	usage: vk.BufferUsageFlags,
+	memory_usage: vma.MemoryUsage,
+	memory_flags: vma.AllocationCreateFlags,
+	required_flags: vk.MemoryPropertyFlags = {},
+	preferred_flags: vk.MemoryPropertyFlags = {},
+) -> Buffer {
+	buffer_info := vk.BufferCreateInfo {
+		sType       = .BUFFER_CREATE_INFO,
+		size        = size,
+		usage       = usage,
+		sharingMode = .EXCLUSIVE,
 	}
 
-	vk.MapMemory(g.device, unfiorm_buffer.memory, 0, size, {}, &unfiorm_buffer.mapped)
+	allocation_create_info := vma.AllocationCreateInfo {
+		usage          = memory_usage,
+		flags          = memory_flags,
+		requiredFlags  = required_flags,
+		preferredFlags = preferred_flags,
+	}
 
-	return unfiorm_buffer
+	vk_buffer: vk.Buffer
+	allocation: vma.Allocation
+	allocation_info: vma.AllocationInfo
+	vma.CreateBuffer(g.allocator, &buffer_info, &allocation_create_info, &vk_buffer, &allocation, &allocation_info)
+	buffer := Buffer {
+		buffer          = vk_buffer,
+		allocation      = allocation,
+		allocation_info = allocation_info,
+	}
+
+	return buffer
 }
 
-destroy_uniform_buffer :: proc(g: ^Graphics, uniform_buffer: ^Uniform_Buffer) {
-	vk.UnmapMemory(g.device, uniform_buffer.memory)
-	destroy_buffer(g, &uniform_buffer.parent)
-	uniform_buffer.mapped = nil
+@(private = "file")
+_create_device_local_buffer :: proc(
+	g: ^Graphics,
+	size: vk.DeviceSize,
+	data: rawptr,
+	usage: vk.BufferUsageFlags,
+	dst_access_mask: vk.AccessFlags,
+	dst_stage_mask: vk.PipelineStageFlags,
+) -> Buffer {
+	sc := _cmd_single_begin(g)
+
+	// Staging buffer
+	staging_buffer := _create_buffer(g, size, {.TRANSFER_SRC}, .AUTO, {.HOST_ACCESS_SEQUENTIAL_WRITE})
+	_fill_buffer(g, staging_buffer, size, data)
+	_cmd_buffer_barrier(sc.command_buffer, staging_buffer, {.HOST_WRITE}, {.TRANSFER_READ}, {.HOST}, {.TRANSFER})
+	defer destroy_buffer(g, &staging_buffer)
+
+	// Result buffer
+	buffer := _create_buffer(g, size, {.TRANSFER_DST} + usage, .AUTO_PREFER_DEVICE, {})
+	_copy_buffer(g, sc.command_buffer, staging_buffer, buffer, size)
+	_cmd_buffer_barrier(sc.command_buffer, buffer, {.TRANSFER_WRITE}, dst_access_mask, {.TRANSFER}, dst_stage_mask)
+
+	_cmd_single_end(sc)
+
+	return buffer
 }
 
-create_ssbo :: proc(g: ^Graphics, particles: rawptr, size: vk.DeviceSize) -> Buffer {
+@(private = "file")
+_create_mapped_buffer :: proc(
+	g: ^Graphics,
+	size: vk.DeviceSize,
+	usage: vk.BufferUsageFlags,
+	dst_access_mask: vk.AccessFlags,
+	dst_stage_mask: vk.PipelineStageFlags,
+) -> (
+	Buffer,
+	rawptr,
+) {
+	mapped: rawptr
+	buffer := _create_buffer(g, size, usage, .AUTO_PREFER_HOST, {.HOST_ACCESS_SEQUENTIAL_WRITE, .MAPPED}, {}, {})
 
-	staging_buffer := create_buffer(g, size, {.TRANSFER_SRC}, {.HOST_VISIBLE, .HOST_COHERENT})
-	fill_buffer(g, staging_buffer, size, particles)
+	sc := _cmd_single_begin(g)
 
-	ssbo := create_buffer(g, size, {.TRANSFER_DST, .VERTEX_BUFFER, .STORAGE_BUFFER}, {.DEVICE_LOCAL})
-	copy_buffer(g, staging_buffer, ssbo, size)
+	must(vma.MapMemory(g.allocator, buffer.allocation, &mapped))
+	_cmd_buffer_barrier(sc.command_buffer, buffer, {.HOST_WRITE}, dst_access_mask, {.HOST}, dst_stage_mask)
 
-	destroy_buffer(g, &staging_buffer)
+	_cmd_single_end(sc)
 
-	return ssbo
+	return buffer, mapped
 }

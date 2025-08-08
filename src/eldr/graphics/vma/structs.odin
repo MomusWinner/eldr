@@ -158,3 +158,4 @@ VirtualAllocationInfo :: struct {
 	size:      vk.DeviceSize,
 	pUserData: rawptr,
 }
+
