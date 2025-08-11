@@ -36,6 +36,7 @@ load_image :: proc(path: string, desired_channels: i32 = 4) -> (image: Image, ok
 	image.channels = cast(u32)channels
 	image.data = data
 	ok = true
+
 	return
 }
 

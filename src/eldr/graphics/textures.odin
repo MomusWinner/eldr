@@ -116,7 +116,6 @@ _destroy_texture_from_device :: proc(device: vk.Device, allocator: vma.Allocator
 	texture.allocation_info = {}
 }
 
-
 @(private)
 _transition_image_layout :: proc {
 	_transition_image_layout_from_default,

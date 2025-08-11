@@ -34,7 +34,7 @@ when ODIN_OS == .Windows {
 	}
 } else when ODIN_OS == .Linux {
 	when ODIN_ARCH == .amd64 {
-		@(extra_linker_flags = "-v -lstdc++")
+		@(extra_linker_flags = "-lstdc++")
 		foreign import VulkanMemoryAllocator "external/vma_linux_x64.a"
 	} else when ODIN_ARCH == .arm64 {
 		@(extra_linker_flags = "-lstdc++")

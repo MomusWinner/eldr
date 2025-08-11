@@ -1,10 +1,13 @@
 package graphics
 
+import "../common"
 import hm "../handle_map"
 import "core:log"
-import "core:os"
 import "core:slice"
+import "core:strings"
+import "shaderc"
 import vk "vendor:vulkan"
+
 
 @(require_results)
 create_graphics_pipeline :: proc(g: ^Graphics, create_pipeline_info: ^Create_Pipeline_Info) -> (Handle, bool) {
@@ -14,7 +17,7 @@ create_graphics_pipeline :: proc(g: ^Graphics, create_pipeline_info: ^Create_Pip
 		return {}, false
 	}
 
-	handle := _registe_graphics_pipeline(g.pipeline_manager, pipeline)
+	handle := _pipeline_manager_registe_graphics_pipeline(g.pipeline_manager, pipeline)
 
 	return handle, true
 }
@@ -32,7 +35,7 @@ create_compute_pipeline :: proc(g: ^Graphics, create_pipeline_info: ^Create_Comp
 		return {}, false
 	}
 
-	handle := _registe_compute_pipeline(g.pipeline_manager, pipeline)
+	handle := _pipeline_manager_registe_compute_pipeline(g.pipeline_manager, pipeline)
 
 	return handle, true
 }
@@ -66,11 +69,11 @@ _reload_graphics_pipeline :: proc(g: ^Graphics, pipeline: ^Graphics_Pipeline) {
 
 	create_info := pipeline.create_info
 
-	shader_stages, ok := _create_shader_stages(g.device, create_info)
+	shader_stages, ok := _create_shader_stages(g.device, g.pipeline_manager, create_info, true)
 	if !ok {
 		return
 	}
-	defer _destroy_shader_stages(g, shader_stages)
+	defer _destroy_shader_stages(g.device, shader_stages)
 
 	pipeline_info := vk.GraphicsPipelineCreateInfo {
 		sType               = .GRAPHICS_PIPELINE_CREATE_INFO,
@@ -207,11 +210,11 @@ _create_graphics_pipeline :: proc(
 ) {
 	create_info := _copy_create_graphics_pipeline_info(create_info)
 
-	shader_stages, ok := _create_shader_stages(g.device, create_info)
+	shader_stages, ok := _create_shader_stages(g.device, g.pipeline_manager, create_info, DEBUG)
 	if !ok {
 		return {}, false
 	}
-	defer _destroy_shader_stages(g, shader_stages)
+	defer _destroy_shader_stages(g.device, shader_stages)
 
 	descriptor_set_layouts := _set_infos_to_descriptor_set_layouts(g, create_info.set_infos, allocator)
 
@@ -260,7 +263,7 @@ _create_compute_pipeline :: proc(
 	create_info := create_info
 	pipeline_info := _copy_create_compute_pipeline_info(create_info, allocator)
 
-	module, ok := _create_shader_module(g.device, pipeline_info.shader_path)
+	module, ok := _create_shader_module(g.device, g.pipeline_manager, pipeline_info.shader_path)
 	if !ok {
 		log.error("couldn't find comp shader. ", pipeline_info.shader_path)
 		return {}, false
@@ -448,12 +451,42 @@ _create_shader_module :: proc {
 
 @(private = "file")
 @(require_results)
-_create_shader_module_from_file :: proc(device: vk.Device, path: string) -> (module: vk.ShaderModule, ok: bool) {
-	data, success := os.read_entire_file(path)
-	if !success {
-		log.error("coulnd't load shader module: ", path)
+_create_shader_module_from_file :: proc(
+	device: vk.Device,
+	pm: ^Pipeline_Manager,
+	path: string,
+	compile: bool = false,
+) -> (
+	module: vk.ShaderModule,
+	ok: bool,
+) {
+	source_path := strings.trim_right(path, ".spv")
+
+	if compile {
+		when DEBUG {
+			data, w_ok := _shader_compile_and_write(pm, source_path)
+			if !w_ok {
+				log.panic("Couldn't write compiled shader ", path)
+			}
+
+			return _create_shader_module_from_memory(device, data), w_ok
+		} else {
+			log.panic("couldn't compile shader on release mode")
+		}
 	}
-	defer delete(data)
+	data, success := common.read_file(path, context.temp_allocator)
+
+	if !success {
+		when DEBUG {
+			data = _shader_compile(pm, source_path)
+			success := common.wirte_file(path, data)
+			if !success {
+				log.panic("Couldn't write compiled shader ", path)
+			}
+		} else {
+			log.error("coulnd't load shader module: ", path)
+		}
+	}
 
 	return _create_shader_module_from_memory(device, data), success
 }
@@ -477,7 +510,9 @@ _create_shader_module_from_memory :: proc(device: vk.Device, code: []byte) -> (m
 @(require_results)
 _create_shader_stages :: proc(
 	device: vk.Device,
+	pm: ^Pipeline_Manager,
 	create_info: ^Create_Pipeline_Info,
+	compile := false,
 	allocator := context.temp_allocator,
 ) -> (
 	[]vk.PipelineShaderStageCreateInfo,
@@ -486,7 +521,9 @@ _create_shader_stages :: proc(
 	shader_stages := make([]vk.PipelineShaderStageCreateInfo, len(create_info.stage_infos))
 
 	for stage_info, i in create_info.stage_infos {
-		shader_module, ok := _create_shader_module(device, stage_info.shader_path)
+		path := strings.concatenate({stage_info.shader_path, ".spv"}, context.temp_allocator)
+		shader_module, ok := _create_shader_module(device, pm, path, compile)
+
 		if !ok {
 			log.errorf(
 				"couldn't create shader module for stage %v. Path: %s",
@@ -507,9 +544,9 @@ _create_shader_stages :: proc(
 }
 
 @(private = "file")
-_destroy_shader_stages :: proc(g: ^Graphics, shader_stages: []vk.PipelineShaderStageCreateInfo) {
+_destroy_shader_stages :: proc(device: vk.Device, shader_stages: []vk.PipelineShaderStageCreateInfo) {
 	for shader_stage in shader_stages {
-		vk.DestroyShaderModule(g.device, shader_stage.module, nil)
+		vk.DestroyShaderModule(device, shader_stage.module, nil)
 	}
 	delete(shader_stages)
 }
@@ -677,4 +714,63 @@ _create_pipeline_layout :: proc(
 	must(vk.CreatePipelineLayout(g.device, &pipeline_layout_info, nil, &layout))
 
 	return layout
+}
+
+@(private = "file")
+@(require_results)
+_shader_compile_and_write :: proc(pm: ^Pipeline_Manager, path: string) -> ([]byte, bool) {
+	data := _shader_compile(pm, path)
+	result_path := strings.concatenate({path, ".spv"}, context.temp_allocator)
+
+	return data, common.wirte_file(result_path, data)
+}
+
+@(private = "file")
+_shader_compile :: proc(pm: ^Pipeline_Manager, path: string) -> []u8 {
+	kind: shaderc.shaderKind
+	file_ext := strings.split(path, ".", context.temp_allocator)[1]
+
+	switch file_ext {
+	case "frag":
+		kind = .FragmentShader
+	case "vert":
+		kind = .VertexShader
+	case "comp":
+		kind = .ComputeShader
+	}
+
+	data, ok := common.read_file(path, context.temp_allocator)
+	if !ok {
+		log.panic("Couldn't load file", path)
+	}
+
+	source := strings.clone_to_cstring(cast(string)data, context.temp_allocator)
+
+	strs := strings.split(path, "/", context.temp_allocator)
+	file_name := strs[len(strs) - 1]
+	b := strings.builder_make(context.temp_allocator)
+	strings.write_string(&b, file_name)
+	input_file_name := strings.to_cstring(&b)
+
+	result := shaderc.compile_into_spv(
+		pm.compiler,
+		source,
+		len(source),
+		kind,
+		input_file_name,
+		"main",
+		pm.compiler_options,
+	)
+
+	if (shaderc.result_get_compilation_status(result) != shaderc.compilationStatus.Success) {
+		log.panic(string(shaderc.result_get_error_message(result)))
+	} else {
+		log.debug("Success compile shader", path)
+	}
+
+	result_len := shaderc.result_get_length(result)
+	bytes := shaderc.result_get_bytes(result)
+	shaderCode := transmute([]u8)bytes[:result_len]
+
+	return shaderCode
 }

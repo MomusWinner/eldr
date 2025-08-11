@@ -1,5 +1,6 @@
 package graphics
 
+import "../common"
 import "base:runtime"
 import "core:log"
 import "core:os"
@@ -17,18 +18,18 @@ when ODIN_OS == .Darwin {
 	foreign import __ "system:System.framework"
 }
 
-@(private = "file")
-g_logger_ctx: runtime.Context
+@(private)
+g_ctx: runtime.Context // used for system procedures
 
 set_logger :: proc(logger: log.Logger) {
 	context.logger = logger
-	g_logger_ctx = context
+	g_ctx = context
 }
 
 init_graphic :: proc(g: ^Graphics, window: glfw.WindowHandle) {
 	g.window = window
 
-	g.pipeline_manager = _pipeline_manager_new()
+	g.pipeline_manager = _pipeline_manager_new(ODIN_DEBUG)
 	_create_instance(g)
 	_create_surface(g)
 	_pick_physical_device(g)
@@ -69,7 +70,7 @@ _vk_messenger_callback :: proc "system" (
 	pCallbackData: ^vk.DebugUtilsMessengerCallbackDataEXT,
 	pUserData: rawptr,
 ) -> b32 {
-	context = g_logger_ctx
+	context = g_ctx
 
 	level: log.Level
 	if .ERROR in messageSeverity {

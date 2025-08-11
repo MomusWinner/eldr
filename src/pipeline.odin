@@ -68,8 +68,8 @@ create_default_pipeline :: proc(e: ^eldr.Eldr) -> hm.Handle {
 			attribute_descriptions = vert_attr[:],
 		},
 		stage_infos = []gfx.Pipeline_Stage_Info {
-			gfx.Pipeline_Stage_Info{stage = {.VERTEX}, shader_path = "assets/vert.spv"},
-			gfx.Pipeline_Stage_Info{stage = {.FRAGMENT}, shader_path = "assets/frag.spv"},
+			gfx.Pipeline_Stage_Info{stage = {.VERTEX}, shader_path = "assets/shaders/default.vert"},
+			gfx.Pipeline_Stage_Info{stage = {.FRAGMENT}, shader_path = "assets/shaders/default.frag"},
 		},
 		input_assembly = {topology = .TRIANGLE_LIST},
 		rasterizer = {polygonMode = .FILL, lineWidth = 1, cullMode = {}, frontFace = .CLOCKWISE},

@@ -12,8 +12,10 @@ import vk "vendor:vulkan"
 
 import "../common"
 import hm "../handle_map"
+import "shaderc"
 import "vma"
 
+DEBUG :: common.DEBUG
 VULKAN_API_VERSION :: vk.API_VERSION_1_4
 
 // Enables Vulkan debug logging and validation layers.
@@ -143,9 +145,11 @@ Compute_Pipeline :: struct {
 }
 
 Pipeline_Manager :: struct {
-	pipelines:         hm.Handle_Map(Graphics_Pipeline),
-	compute_pipelines: hm.Handle_Map(Compute_Pipeline),
-	allocator:         runtime.Allocator,
+	pipelines:          hm.Handle_Map(Graphics_Pipeline),
+	compute_pipelines:  hm.Handle_Map(Compute_Pipeline),
+	compiler:           shaderc.compilerT,
+	compiler_options:   shaderc.compileOptionsT,
+	enable_compilation: bool,
 }
 
 Swap_Chain :: struct {

@@ -59,7 +59,7 @@ import_obj :: proc(path: string, allocator := context.allocator) -> ([]Vertex, [
 		return
 	}
 
-	data, ok := os.read_entire_file(path, context.temp_allocator)
+	data, ok := common.read_file(path, context.temp_allocator)
 	if !ok {
 		log.errorf("Couldn't load file by path: %s", path)
 		return nil, nil, false
@@ -107,10 +107,7 @@ import_obj :: proc(path: string, allocator := context.allocator) -> ([]Vertex, [
 					hash := _hash(p, t, n)
 					index, ok := index_by_vertex[hash]
 					if !ok {
-						append(
-							&vertices,
-							Vertex{position = pos[p], tex_coord = texCoord[t], normal = norm[n]},
-						)
+						append(&vertices, Vertex{position = pos[p], tex_coord = texCoord[t], normal = norm[n]})
 						index = cast(u16)len(vertices) - 1
 						index_by_vertex[hash] = index
 					}
@@ -137,12 +134,7 @@ _info :: proc(vertices: []Vertex, indices: []u16) {
 		if (i % 2 == 0) {
 			fmt.println()
 		}
-		fmt.printf(
-			" | %f %f %f | ;",
-			vertices[i].position,
-			vertices[i].tex_coord,
-			vertices[i].normal,
-		)
+		fmt.printf(" | %f %f %f | ;", vertices[i].position, vertices[i].tex_coord, vertices[i].normal)
 	}
 	fmt.println()
 

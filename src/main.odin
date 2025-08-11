@@ -102,7 +102,6 @@ main :: proc() {
 			vk.WaitForFences(e.g.device, 1, &e.g.fence, true, max(u64))
 			gfx.pipeline_hot_reload(e.g)
 			reload = false
-			log.info("Reloading graphic pipelines")
 		}
 
 		dt = glfw.GetTime() - last_time
