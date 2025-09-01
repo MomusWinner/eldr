@@ -200,7 +200,7 @@ _swapchain_setup_framebuffers :: proc(swapchain: ^Swap_Chain, render_pass: vk.Re
 			height          = swapchain.extent.height,
 			layers          = 1,
 		}
-		must(vk.CreateFramebuffer(swapchain._device, &frame_buffer, nil, &swapchain.frame_buffers[i]))
+		// must(vk.CreateFramebuffer(swapchain._device, &frame_buffer, nil, &swapchain.frame_buffers[i]))
 	}
 }
 

@@ -197,6 +197,19 @@ Swap_Chain :: struct {
 	_surface:                   vk.SurfaceKHR,
 }
 
+Physical_Device_Features :: struct {
+	dynamic_rendering:   vk.PhysicalDeviceDynamicRenderingFeatures,
+	// ^
+	// | pNext
+	descriptor_indexing: vk.PhysicalDeviceDescriptorIndexingFeatures,
+	// ^
+	// | pNext
+	synchronization:     vk.PhysicalDeviceSynchronization2Features,
+	// ^
+	// | pNext
+	features:            vk.PhysicalDeviceFeatures2,
+}
+
 Graphics :: struct {
 	window:                    glfw.WindowHandle,
 	instance_info:             vk.InstanceCreateInfo,
@@ -316,25 +329,57 @@ begin_render :: proc(g: ^Graphics) -> (Frame_Data, Begin_Render_Error) {
 	}
 	must(vk.BeginCommandBuffer(g.cmd, &begin_info))
 
-	clear_values := [2]vk.ClearValue{}
-	clear_values[0].color.float32 = {0.0, 0.0, 0.0, 1.0}
-	clear_values[1].depthStencil = {1.0, 0}
+	clear_color := vk.ClearValue {
+		color = {float32 = {0.0, 0.0, 0.0, 1.0}},
+	}
 
-	render_pass_info := vk.RenderPassBeginInfo {
-		sType = .RENDER_PASS_BEGIN_INFO,
-		renderPass = g.render_pass,
-		framebuffer = g.swapchain.frame_buffers[g.swapchain.image_index],
+	_transition_image_layout_from_cmd(
+		g.cmd,
+		g.swapchain.images[g.swapchain.image_index],
+		{.COLOR},
+		g.swapchain.format.format,
+		.UNDEFINED,
+		.COLOR_ATTACHMENT_OPTIMAL,
+		1,
+	)
+
+	color_attachment_info := vk.RenderingAttachmentInfo {
+		sType              = .RENDERING_ATTACHMENT_INFO,
+		pNext              = nil,
+		imageView          = g.swapchain.color_image.view,
+		imageLayout        = .ATTACHMENT_OPTIMAL,
+		resolveImageView   = g.swapchain.image_views[g.swapchain.image_index],
+		resolveImageLayout = .GENERAL,
+		loadOp             = .CLEAR,
+		storeOp            = .STORE,
+		clearValue         = clear_color,
+		resolveMode        = {.AVERAGE_KHR},
+	}
+
+	depth_stencil_clear_value := vk.ClearValue {
+		depthStencil = {1, 0},
+	}
+
+	depth_stencil_attachment_info := vk.RenderingAttachmentInfo {
+		sType       = .RENDERING_ATTACHMENT_INFO,
+		pNext       = nil,
+		imageView   = g.swapchain.depth_image.view,
+		imageLayout = .DEPTH_STENCIL_ATTACHMENT_OPTIMAL,
+		loadOp      = .CLEAR,
+		storeOp     = .DONT_CARE,
+		clearValue  = depth_stencil_clear_value,
+	}
+
+	rendering_info := vk.RenderingInfo {
+		sType = .RENDERING_INFO,
 		renderArea = {extent = g.swapchain.extent},
-		clearValueCount = len(clear_values),
-		pClearValues = raw_data(&clear_values),
+		layerCount = 1,
+		colorAttachmentCount = 1,
+		pColorAttachments = &color_attachment_info,
+		pDepthAttachment = &depth_stencil_attachment_info,
 	}
 
-	subpass_info := vk.SubpassBeginInfo {
-		sType    = .SUBPASS_BEGIN_INFO,
-		contents = .INLINE,
-	}
-
-	vk.CmdBeginRenderPass2(g.cmd, &render_pass_info, &subpass_info)
+	vk.CmdBeginRendering(g.cmd, &rendering_info)
 
 	return Frame_Data{cmd = g.cmd}, .None
 }
@@ -344,8 +389,25 @@ end_render :: proc(g: ^Graphics, wait_semaphore_infos: []vk.SemaphoreSubmitInfo)
 		log.error("Call begin_render() before end_render()")
 	}
 
-	vk.CmdEndRenderPass(g.cmd)
+	// vk.CmdEndRenderPass(g.cmd)
+	vk.CmdEndRendering(g.cmd)
+
+	sc := _cmd_single_begin_from_graphics(g)
+
+	_transition_image_layout_from_cmd(
+		g.cmd,
+		g.swapchain.images[g.swapchain.image_index],
+		{.COLOR},
+		g.swapchain.format.format,
+		.COLOR_ATTACHMENT_OPTIMAL,
+		.PRESENT_SRC_KHR,
+		1,
+	)
+
+	_cmd_single_end(sc)
+
 	must(vk.EndCommandBuffer(g.cmd))
+
 
 	required_wait_semaphore_infos := concat(
 		wait_semaphore_infos,

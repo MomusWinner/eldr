@@ -36,7 +36,7 @@ init_graphic :: proc(g: ^Graphics, window: glfw.WindowHandle) {
 	_create_logical_device(g)
 	_create_vma_allocator(g)
 	g.swapchain = _swapchain_new(g.window, g.allocator, g.physical_device, g.device, g.surface, g.msaa_samples)
-	_create_render_pass(g)
+	// _create_render_pass(g)
 	_create_descriptor_pool(g)
 	_create_command_pool(g)
 
@@ -60,7 +60,7 @@ destroy_graphic :: proc(g: ^Graphics) {
 	_destroy_sync_obj(g)
 	_destroy_command_pool(g)
 	_destroy_descriptor_pool(g)
-	_destroy_render_pass(g)
+	// _destroy_render_pass(g)
 	_swapchain_destroy(g.swapchain)
 	vma.DestroyAllocator(g.allocator)
 	_pipeline_manager_destroy(g.pipeline_manager, g.device)
@@ -556,36 +556,26 @@ byte_arr_str :: proc(arr: ^[$N]byte) -> string {
 	return strings.truncate_to_byte(string(arr[:]), 0)
 }
 
-Physical_Device_Features :: struct {
-	dynamic_rendering:   vk.PhysicalDeviceDynamicRenderingFeatures,
-	// ^
-	// | pNext
-	synchronization:     vk.PhysicalDeviceSynchronization2Features,
-	// ^
-	// | pNext
-	descriptor_indexing: vk.PhysicalDeviceDescriptorIndexingFeatures,
-	// ^
-	// | pNext
-	features:            vk.PhysicalDeviceFeatures2,
-}
-
 get_physical_device_features :: proc(device: vk.PhysicalDevice, features: ^Physical_Device_Features) {
-	features.synchronization.sType = .PHYSICAL_DEVICE_SYNCHRONIZATION_2_FEATURES
-	features.synchronization.pNext = nil
+	features.dynamic_rendering.sType = .PHYSICAL_DEVICE_DYNAMIC_RENDERING_FEATURES
+	features.dynamic_rendering.dynamicRendering = true
 
 	features.descriptor_indexing.sType = .PHYSICAL_DEVICE_DESCRIPTOR_INDEXING_FEATURES
-	features.descriptor_indexing.pNext = &features.synchronization
+	features.descriptor_indexing.pNext = &features.dynamic_rendering
+
+	features.synchronization.sType = .PHYSICAL_DEVICE_SYNCHRONIZATION_2_FEATURES
+	features.synchronization.pNext = &features.descriptor_indexing
 
 	features.features.sType = .PHYSICAL_DEVICE_FEATURES_2
-	features.features.pNext = &features.descriptor_indexing
+	features.features.pNext = &features.synchronization
 
 	vk.GetPhysicalDeviceFeatures2(device, &features.features)
 }
 
 validate_physical_device_features :: proc(features: Physical_Device_Features) -> (bool, string) {
-	// SYNCHRONIZATION 2
-	if !features.synchronization.synchronization2 {
-		return false, "device does not support synchronization2"
+	// DYNAMIC RENDERING 
+	if !features.dynamic_rendering.dynamicRendering {
+		return false, "device does not support dynamic rendering"
 	}
 
 	// DESCRIPTOR INDEXING
@@ -614,6 +604,11 @@ validate_physical_device_features :: proc(features: Physical_Device_Features) ->
 		return false, "device does not support descriptor indexing descriptorBindingPartiallyBound"
 	}
 
+	// SYNCHRONIZATION 2
+	if !features.synchronization.synchronization2 {
+		return false, "device does not support synchronization2"
+	}
+
 	// FEATURES
 	if !features.features.features.samplerAnisotropy {
 		return false, "device does not support anisotropy"
@@ -626,13 +621,14 @@ validate_physical_device_features :: proc(features: Physical_Device_Features) ->
 }
 
 get_required_physical_device_features :: proc(features: ^Physical_Device_Features) {
-	// SYNCHRONIZATION2
-	features.synchronization.sType = .PHYSICAL_DEVICE_SYNCHRONIZATION_2_FEATURES
-	features.synchronization.synchronization2 = true
+	// DYNAMIC RENDERING 
+	features.dynamic_rendering.sType = .PHYSICAL_DEVICE_DYNAMIC_RENDERING_FEATURES
+	features.dynamic_rendering.pNext = nil
+	features.dynamic_rendering.dynamicRendering = true
 
 	// DESCRIPTOR INDEXING
 	features.descriptor_indexing.sType = .PHYSICAL_DEVICE_DESCRIPTOR_INDEXING_FEATURES
-	features.descriptor_indexing.pNext = &features.synchronization
+	features.descriptor_indexing.pNext = &features.dynamic_rendering
 	features.descriptor_indexing.shaderSampledImageArrayNonUniformIndexing = true
 	features.descriptor_indexing.descriptorBindingSampledImageUpdateAfterBind = true
 	features.descriptor_indexing.shaderUniformBufferArrayNonUniformIndexing = true
@@ -642,9 +638,14 @@ get_required_physical_device_features :: proc(features: ^Physical_Device_Feature
 	features.descriptor_indexing.runtimeDescriptorArray = true
 	features.descriptor_indexing.descriptorBindingPartiallyBound = true
 
+	// SYNCHRONIZATION2
+	features.synchronization.sType = .PHYSICAL_DEVICE_SYNCHRONIZATION_2_FEATURES
+	features.synchronization.pNext = &features.descriptor_indexing
+	features.synchronization.synchronization2 = true
+
 	// FEATURES
 	features.features.sType = .PHYSICAL_DEVICE_FEATURES_2
-	features.features.pNext = &features.descriptor_indexing
+	features.features.pNext = &features.synchronization
 	features.features.features.geometryShader = true
 	features.features.features.samplerAnisotropy = true
 }

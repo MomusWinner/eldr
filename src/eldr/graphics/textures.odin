@@ -172,8 +172,21 @@ _transition_image_layout_from_cmd :: proc(
 
 		source_stage = {}
 		destination_stage = {.EARLY_FRAGMENT_TESTS}
+	} else if old_layout == .UNDEFINED && new_layout == .COLOR_ATTACHMENT_OPTIMAL {
+		barrier_src_access_mask = {}
+		barrier_dst_access_mask = {.COLOR_ATTACHMENT_WRITE}
+
+		source_stage = {.TOP_OF_PIPE}
+		destination_stage = {.COLOR_ATTACHMENT_OUTPUT}
+	} else if old_layout == .COLOR_ATTACHMENT_OPTIMAL && new_layout == .PRESENT_SRC_KHR {
+		barrier_src_access_mask = {.COLOR_ATTACHMENT_WRITE}
+		barrier_dst_access_mask = {.MEMORY_READ}
+
+		source_stage = {.COLOR_ATTACHMENT_OUTPUT}
+		destination_stage = {.BOTTOM_OF_PIPE}
+
 	} else {
-		panic("unsuported layout transition!")
+		log.panicf("unsuported layout transition!\nold_layout %v \nnew_layout: %v", old_layout, new_layout)
 	}
 
 	barrier := vk.ImageMemoryBarrier2 {

@@ -8,7 +8,6 @@ import "core:strings"
 import "shaderc"
 import vk "vendor:vulkan"
 
-
 @(require_results)
 create_graphics_pipeline :: proc(g: ^Graphics, create_pipeline_info: ^Create_Pipeline_Info) -> (Pipeline_Handle, bool) {
 	pipeline, ok := _create_graphics_pipeline(g, create_pipeline_info)
@@ -222,8 +221,19 @@ _create_graphics_pipeline :: proc(
 
 	pipeline_layout := _create_pipeline_layout(g, descriptor_set_layouts, create_info.push_constants)
 
+	depth_format := _find_depth_format(g.physical_device)
+
+	pipeline_rendering_info := vk.PipelineRenderingCreateInfo {
+		sType                   = .PIPELINE_RENDERING_CREATE_INFO,
+		// stencilAttachmentFormat = depth_format,
+		depthAttachmentFormat   = depth_format,
+		colorAttachmentCount    = 1,
+		pColorAttachmentFormats = &g.swapchain.format.format,
+	}
+
 	pipeline_info := vk.GraphicsPipelineCreateInfo {
 		sType               = .GRAPHICS_PIPELINE_CREATE_INFO,
+		pNext               = &pipeline_rendering_info,
 		stageCount          = cast(u32)len(shader_stages),
 		pStages             = raw_data(shader_stages),
 		pVertexInputState   = _create_vertex_input_info(g, create_info),
@@ -235,7 +245,7 @@ _create_graphics_pipeline :: proc(
 		pDynamicState       = _create_dynamic_info(g, create_info),
 		pDepthStencilState  = _create_depth_stencil_info(g, create_info),
 		layout              = pipeline_layout,
-		renderPass          = render_pass,
+		// renderPass          = render_pass,
 		subpass             = 0,
 		basePipelineIndex   = -1,
 	}
