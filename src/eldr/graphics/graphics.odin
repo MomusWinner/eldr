@@ -105,6 +105,7 @@ Create_Pipeline_Info :: struct {
 	set_infos:                []Pipeline_Set_Info,
 	push_constants:           []Push_Constant_Range,
 	stage_infos:              []Pipeline_Stage_Info,
+	render_pass:              Maybe(vk.RenderPass),
 	vertex_input_description: struct {
 		input_rate:             vk.VertexInputRate,
 		binding_description:    Vertex_Input_Binding_Description,
@@ -302,7 +303,6 @@ begin_render :: proc(g: ^Graphics) -> (Frame_Data, Begin_Render_Error) {
 	case .ERROR_OUT_OF_DATE_KHR:
 		_recreate_swapchain(g)
 		return {}, .OutOfDate
-
 	case .SUCCESS, .SUBOPTIMAL_KHR:
 	case:
 		log.panicf("acquire next image failure: %v", acquire_result)
@@ -391,7 +391,7 @@ get_height :: proc(g: ^Graphics) -> u32 {
 	return g.swapchain.extent.height
 }
 
-set_full_viewport :: proc(g: ^Graphics, cmd: Command_Buffer) {
+cmd_set_full_viewport :: proc(g: ^Graphics, cmd: Command_Buffer) {
 	viewport := vk.Viewport {
 		width    = cast(f32)get_width(g),
 		height   = cast(f32)get_height(g),

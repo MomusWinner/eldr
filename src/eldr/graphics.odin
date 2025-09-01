@@ -20,7 +20,7 @@ end_render :: proc() {gfx.end_render(ctx.g, {}, {})}
 end_render_wait :: proc(wait_semaphores: []Semaphore, wait_stages: []Pipeline_Stage_Flags) {
 	gfx.end_render(ctx.g, wait_semaphores, wait_stages)}
 
-set_full_viewport :: proc(cmd: Command_Buffer) {gfx.set_full_viewport(ctx.g, cmd)}
+cmd_set_full_viewport :: proc(cmd: Command_Buffer) {gfx.cmd_set_full_viewport(ctx.g, cmd)}
 
 // CAMERA
 

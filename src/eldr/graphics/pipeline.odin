@@ -11,7 +11,7 @@ import vk "vendor:vulkan"
 
 @(require_results)
 create_graphics_pipeline :: proc(g: ^Graphics, create_pipeline_info: ^Create_Pipeline_Info) -> (Pipeline_Handle, bool) {
-	pipeline, ok := _create_graphics_pipeline(g, create_pipeline_info, context.allocator)
+	pipeline, ok := _create_graphics_pipeline(g, create_pipeline_info)
 	if !ok {
 		log.errorf("couldn't load pipeline")
 		return {}, false
@@ -196,11 +196,20 @@ _create_descriptor_set :: proc(
 _create_graphics_pipeline :: proc(
 	g: ^Graphics,
 	create_info: ^Create_Pipeline_Info,
+	maybe_surface: Maybe(Surface) = nil,
 	allocator := context.allocator,
 ) -> (
 	Graphics_Pipeline,
 	bool,
 ) {
+	render_pass: vk.RenderPass
+	surface, has_surface := maybe_surface.?
+	if has_surface {
+		render_pass = surface.render_pass
+	} else {
+		render_pass = g.render_pass
+	}
+
 	create_info := _copy_create_graphics_pipeline_info(create_info)
 
 	shader_stages, ok := _create_shader_stages(g.device, g.pipeline_manager, create_info, DEBUG)
@@ -226,7 +235,7 @@ _create_graphics_pipeline :: proc(
 		pDynamicState       = _create_dynamic_info(g, create_info),
 		pDepthStencilState  = _create_depth_stencil_info(g, create_info),
 		layout              = pipeline_layout,
-		renderPass          = g.render_pass,
+		renderPass          = render_pass,
 		subpass             = 0,
 		basePipelineIndex   = -1,
 	}
@@ -339,6 +348,7 @@ _copy_create_graphics_pipeline_info :: proc(
 		info.vertex_input_description.attribute_descriptions,
 	)
 
+	copy_info.render_pass = info.render_pass
 	copy_info.input_assembly = info.input_assembly
 	copy_info.rasterizer = info.rasterizer
 	copy_info.multisampling = info.multisampling

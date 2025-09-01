@@ -72,7 +72,7 @@ room_scene_draw :: proc(s: ^Scene) {
 	// Begin gfx.
 	// --------------------------------------------------------------------------------------------------------------------
 
-	eldr.set_full_viewport(frame.cmd)
+	eldr.cmd_set_full_viewport(frame.cmd)
 	eldr.draw_model(data.model, data.camera, data.transform, frame.cmd)
 
 	// --------------------------------------------------------------------------------------------------------------------

@@ -50,6 +50,8 @@ init_graphic :: proc(g: ^Graphics, window: glfw.WindowHandle) {
 
 	g.bindless = new(Bindless)
 	_bindless_init(g.bindless, g.device, g.descriptor_pool)
+
+	// offscreen_render_pass := _create_offscren_render_pass(g)
 }
 
 destroy_graphic :: proc(g: ^Graphics) {
@@ -219,44 +221,6 @@ _physical_device_extensions :: proc(
 @(private = "file")
 _pick_physical_device :: proc(g: ^Graphics) {
 	score_physical_device :: proc(g: ^Graphics, device: vk.PhysicalDevice) -> (score: int) {
-		// descriptor_indexing_feature := vk.PhysicalDeviceDescriptorIndexingFeatures {
-		// 	sType = .PHYSICAL_DEVICE_DESCRIPTOR_INDEXING_FEATURES,
-		// 	pNext = nil,
-		// }
-		//
-		// device_features := vk.PhysicalDeviceFeatures2 {
-		// 	sType = .PHYSICAL_DEVICE_FEATURES_2,
-		// 	pNext = &descriptor_indexing_feature,
-		// }
-		//
-		// vk.GetPhysicalDeviceFeatures2(device, &device_features)
-		// log.info(descriptor_indexing_feature)
-		//
-		// if !descriptor_indexing_feature.shaderSampledImageArrayNonUniformIndexing {
-		// 	log.info(" ! device does not support shaderSampledImageArrayNonUniformIndexing")
-		// 	return 0
-		// }
-		// if !descriptor_indexing_feature.shaderStorageBufferArrayNonUniformIndexing {
-		// 	log.info(" ! device does not support shaderStorageBufferArrayNonUniformIndexing")
-		// 	return 0
-		// }
-		// if !descriptor_indexing_feature.shaderUniformBufferArrayNonUniformIndexing {
-		// 	log.info(" ! device does not support shaderUniformBufferArrayNonUniformIndexing")
-		// 	return 0
-		// }
-		// if !descriptor_indexing_feature.descriptorBindingSampledImageUpdateAfterBind {
-		// 	log.info(" ! device does not support descriptorBindingSampledImageUpdateAfterBind")
-		// 	return 0
-		// }
-		// if !descriptor_indexing_feature.shaderStorageBufferArrayNonUniformIndexing {
-		// 	log.info(" ! device does not support shaderStorageBufferArrayNonUniformIndexing")
-		// 	return 0
-		// }
-		// if !descriptor_indexing_feature.descriptorBindingStorageBufferUpdateAfterBind {
-		// 	log.info(" ! device does not support descriptorBindingStorageBufferUpdateAfterBind")
-		// 	return 0
-		// }
-
 		features: Physical_Device_Features
 		get_physical_device_features(device, &features)
 		success, msg := validate_physical_device_features(features)
@@ -401,7 +365,7 @@ _create_logical_device :: proc(g: ^Graphics) {
 	//
 	// get_required_physical_device_features(&features)
 
-	get_physical_device_features(g.physical_device, &features)
+	get_required_physical_device_features(&features)
 
 	device_create_info := vk.DeviceCreateInfo {
 		sType                   = .DEVICE_CREATE_INFO,
@@ -579,8 +543,15 @@ byte_arr_str :: proc(arr: ^[$N]byte) -> string {
 }
 
 Physical_Device_Features :: struct {
+	sync:                vk.PhysicalDeviceSynchronization2Features,
+	// ^
+	// | pNext
+	dynamic_rendering:   vk.PhysicalDeviceDynamicRenderingFeatures,
+	// ^
+	// | pNext
 	descriptor_indexing: vk.PhysicalDeviceDescriptorIndexingFeatures,
 	// ^
+	// | pNext
 	features:            vk.PhysicalDeviceFeatures2,
 }
 
@@ -595,27 +566,33 @@ get_physical_device_features :: proc(device: vk.PhysicalDevice, features: ^Physi
 }
 
 validate_physical_device_features :: proc(features: Physical_Device_Features) -> (bool, string) {
-	// Descriptor Indexing
+	// DESCRIPTOR INDEXING
 	if !features.descriptor_indexing.shaderSampledImageArrayNonUniformIndexing {
-		return false, "device does not support shaderSampledImageArrayNonUniformIndexing"
+		return false, "device does not support descriptor indexing shaderSampledImageArrayNonUniformIndexing"
 	}
 	if !features.descriptor_indexing.descriptorBindingSampledImageUpdateAfterBind {
-		return false, "device does not support descriptorBindingSampledImageUpdateAfterBind"
+		return false, "device does not support descriptor indexing descriptorBindingSampledImageUpdateAfterBind"
 	}
 	if !features.descriptor_indexing.shaderUniformBufferArrayNonUniformIndexing {
-		return false, "device does not support shaderUniformBufferArrayNonUniformIndexing"
+		return false, "device does not support descriptor indexing shaderUniformBufferArrayNonUniformIndexing"
 	}
 	if !features.descriptor_indexing.descriptorBindingUniformBufferUpdateAfterBind {
-		return false, "device does not support descriptorBindingUniformBufferUpdateAfterBind"
+		return false, "device does not support descriptor indexing descriptorBindingUniformBufferUpdateAfterBind"
 	}
 	if !features.descriptor_indexing.shaderStorageBufferArrayNonUniformIndexing {
-		return false, "device does not support shaderStorageBufferArrayNonUniformIndexing"
+		return false, "device does not support descriptor indexing  shaderStorageBufferArrayNonUniformIndexing"
 	}
 	if !features.descriptor_indexing.descriptorBindingStorageBufferUpdateAfterBind {
-		return false, "device does not support descriptorBindingStorageBufferUpdateAfterBind"
+		return false, "device does not support descriptor indexing descriptorBindingStorageBufferUpdateAfterBind"
+	}
+	if !features.descriptor_indexing.runtimeDescriptorArray {
+		return false, "device does not support descriptor indexing runtimeDescriptorArray"
+	}
+	if !features.descriptor_indexing.descriptorBindingPartiallyBound {
+		return false, "device does not support descriptor indexing descriptorBindingPartiallyBound"
 	}
 
-	// Features
+	// FEATURES
 	if !features.features.features.samplerAnisotropy {
 		return false, "device does not support anisotropy"
 	}
@@ -627,6 +604,7 @@ validate_physical_device_features :: proc(features: Physical_Device_Features) ->
 }
 
 get_required_physical_device_features :: proc(features: ^Physical_Device_Features) {
+	// DESCRIPTOR INDEXING
 	features.descriptor_indexing.sType = .PHYSICAL_DEVICE_DESCRIPTOR_INDEXING_FEATURES
 	features.descriptor_indexing.pNext = nil
 	features.descriptor_indexing.shaderSampledImageArrayNonUniformIndexing = true
@@ -635,9 +613,12 @@ get_required_physical_device_features :: proc(features: ^Physical_Device_Feature
 	features.descriptor_indexing.descriptorBindingUniformBufferUpdateAfterBind = true
 	features.descriptor_indexing.shaderStorageBufferArrayNonUniformIndexing = true
 	features.descriptor_indexing.descriptorBindingStorageBufferUpdateAfterBind = true
+	features.descriptor_indexing.runtimeDescriptorArray = true
+	features.descriptor_indexing.descriptorBindingPartiallyBound = true
 
+	// FEATURES
 	features.features.sType = .PHYSICAL_DEVICE_FEATURES_2
 	features.features.pNext = &features.descriptor_indexing
-	features.features.features.sampleRateShading = true
 	features.features.features.geometryShader = true
+	features.features.features.samplerAnisotropy = true
 }
