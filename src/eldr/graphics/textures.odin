@@ -148,17 +148,17 @@ _transition_image_layout_from_cmd :: proc(
 	new_layout: vk.ImageLayout,
 	mip_levels: u32,
 ) {
-	source_stage: vk.PipelineStageFlags
-	destination_stage: vk.PipelineStageFlags
+	source_stage: vk.PipelineStageFlags2
+	destination_stage: vk.PipelineStageFlags2
 
-	barrier_src_access_mask: vk.AccessFlags
-	barrier_dst_access_mask: vk.AccessFlags
+	barrier_src_access_mask: vk.AccessFlags2
+	barrier_dst_access_mask: vk.AccessFlags2
 
 	if old_layout == .UNDEFINED && new_layout == .TRANSFER_DST_OPTIMAL {
 		barrier_src_access_mask = {}
 		barrier_dst_access_mask = {.TRANSFER_WRITE}
 
-		source_stage = {.TOP_OF_PIPE}
+		source_stage = {}
 		destination_stage = {.TRANSFER}
 	} else if old_layout == .TRANSFER_DST_OPTIMAL && new_layout == .SHADER_READ_ONLY_OPTIMAL {
 		barrier_src_access_mask = {.TRANSFER_WRITE}
@@ -170,14 +170,14 @@ _transition_image_layout_from_cmd :: proc(
 		barrier_src_access_mask = {}
 		barrier_dst_access_mask = {.DEPTH_STENCIL_ATTACHMENT_READ, .DEPTH_STENCIL_ATTACHMENT_WRITE}
 
-		source_stage = {.TOP_OF_PIPE}
+		source_stage = {}
 		destination_stage = {.EARLY_FRAGMENT_TESTS}
 	} else {
 		panic("unsuported layout transition!")
 	}
 
-	barrier := vk.ImageMemoryBarrier {
-		sType = .IMAGE_MEMORY_BARRIER,
+	barrier := vk.ImageMemoryBarrier2 {
+		sType = .IMAGE_MEMORY_BARRIER_2,
 		oldLayout = old_layout,
 		newLayout = new_layout,
 		srcQueueFamilyIndex = vk.QUEUE_FAMILY_IGNORED,
@@ -190,11 +190,21 @@ _transition_image_layout_from_cmd :: proc(
 			baseArrayLayer = 0,
 			layerCount = 1,
 		},
+		srcStageMask = source_stage,
 		srcAccessMask = barrier_src_access_mask,
 		dstAccessMask = barrier_dst_access_mask,
+		dstStageMask = destination_stage,
 	}
 
-	vk.CmdPipelineBarrier(command_buffer, source_stage, destination_stage, {}, {}, nil, 0, nil, 1, &barrier)
+
+	dependency_info := vk.DependencyInfo {
+		sType                   = .DEPENDENCY_INFO,
+		imageMemoryBarrierCount = 1,
+		pImageMemoryBarriers    = &barrier,
+		dependencyFlags         = {},
+	}
+
+	vk.CmdPipelineBarrier2(command_buffer, &dependency_info)
 }
 
 @(private)

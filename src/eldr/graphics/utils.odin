@@ -11,8 +11,8 @@ must :: proc(result: vk.Result, msg: string = "", loc := #caller_location) {
 }
 
 @(private)
-concat :: proc(a: []$T, b: []T) -> []T {
-	result := make([]T, len(a) + len(b))
+concat :: proc(a: []$T, b: []T, allocator := context.allocator) -> []T {
+	result := make([]T, len(a) + len(b), allocator)
 	copy(result, a)
 	copy(result[len(a):], b)
 	return result

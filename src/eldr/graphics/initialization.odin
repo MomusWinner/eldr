@@ -406,7 +406,8 @@ _destroy_logical_device :: proc(g: ^Graphics) {
 
 @(private = "file")
 _create_render_pass :: proc(g: ^Graphics) {
-	color_attachment := vk.AttachmentDescription {
+	color_attachment := vk.AttachmentDescription2 {
+		sType          = .ATTACHMENT_DESCRIPTION_2,
 		format         = g.swapchain.format.format,
 		samples        = g.msaa_samples,
 		loadOp         = .CLEAR,
@@ -417,12 +418,14 @@ _create_render_pass :: proc(g: ^Graphics) {
 		finalLayout    = .COLOR_ATTACHMENT_OPTIMAL,
 	}
 
-	color_attachment_ref := vk.AttachmentReference {
+	color_attachment_ref := vk.AttachmentReference2 {
+		sType      = .ATTACHMENT_REFERENCE_2,
 		attachment = 0,
 		layout     = .COLOR_ATTACHMENT_OPTIMAL,
 	}
 
-	depth_attachment := vk.AttachmentDescription {
+	depth_attachment := vk.AttachmentDescription2 {
+		sType          = .ATTACHMENT_DESCRIPTION_2,
 		format         = _find_depth_format(g.physical_device),
 		samples        = g.msaa_samples,
 		loadOp         = .CLEAR,
@@ -433,12 +436,14 @@ _create_render_pass :: proc(g: ^Graphics) {
 		finalLayout    = .DEPTH_STENCIL_ATTACHMENT_OPTIMAL,
 	}
 
-	depth_attachment_ref := vk.AttachmentReference {
+	depth_attachment_ref := vk.AttachmentReference2 {
+		sType      = .ATTACHMENT_REFERENCE_2,
 		attachment = 1,
 		layout     = .DEPTH_STENCIL_ATTACHMENT_OPTIMAL,
 	}
 
-	color_attachment_resolve := vk.AttachmentDescription {
+	color_attachment_resolve := vk.AttachmentDescription2 {
+		sType          = .ATTACHMENT_DESCRIPTION_2,
 		format         = g.swapchain.format.format,
 		samples        = {._1},
 		loadOp         = .DONT_CARE,
@@ -449,14 +454,16 @@ _create_render_pass :: proc(g: ^Graphics) {
 		finalLayout    = .PRESENT_SRC_KHR,
 	}
 
-	color_attachment_resolve_ref := vk.AttachmentReference {
+	color_attachment_resolve_ref := vk.AttachmentReference2 {
+		sType      = .ATTACHMENT_REFERENCE_2,
 		attachment = 2,
 		layout     = .COLOR_ATTACHMENT_OPTIMAL,
 	}
 
-	attachments := []vk.AttachmentDescription{color_attachment, depth_attachment, color_attachment_resolve}
+	attachments := []vk.AttachmentDescription2{color_attachment, depth_attachment, color_attachment_resolve}
 
-	subpass := vk.SubpassDescription {
+	subpass := vk.SubpassDescription2 {
+		sType                   = .SUBPASS_DESCRIPTION_2,
 		pipelineBindPoint       = .GRAPHICS,
 		colorAttachmentCount    = 1,
 		pColorAttachments       = &color_attachment_ref,
@@ -464,17 +471,24 @@ _create_render_pass :: proc(g: ^Graphics) {
 		pResolveAttachments     = &color_attachment_resolve_ref,
 	}
 
-	dependency := vk.SubpassDependency {
-		srcSubpass    = vk.SUBPASS_EXTERNAL,
-		dstSubpass    = 0,
+	memory_barrier := vk.MemoryBarrier2 {
+		sType         = .MEMORY_BARRIER_2,
+		pNext         = nil,
 		srcStageMask  = {.COLOR_ATTACHMENT_OUTPUT, .EARLY_FRAGMENT_TESTS},
 		srcAccessMask = {},
 		dstStageMask  = {.COLOR_ATTACHMENT_OUTPUT, .EARLY_FRAGMENT_TESTS},
 		dstAccessMask = {.COLOR_ATTACHMENT_WRITE, .DEPTH_STENCIL_ATTACHMENT_WRITE},
 	}
 
-	render_pass := vk.RenderPassCreateInfo {
-		sType           = .RENDER_PASS_CREATE_INFO,
+	dependency := vk.SubpassDependency2 {
+		sType      = .SUBPASS_DEPENDENCY_2,
+		pNext      = &memory_barrier,
+		srcSubpass = vk.SUBPASS_EXTERNAL,
+		dstSubpass = 0,
+	}
+
+	render_pass := vk.RenderPassCreateInfo2 {
+		sType           = .RENDER_PASS_CREATE_INFO_2,
 		attachmentCount = cast(u32)len(attachments),
 		pAttachments    = raw_data(attachments),
 		subpassCount    = 1,
@@ -483,7 +497,7 @@ _create_render_pass :: proc(g: ^Graphics) {
 		pDependencies   = &dependency,
 	}
 
-	must(vk.CreateRenderPass(g.device, &render_pass, nil, &g.render_pass))
+	must(vk.CreateRenderPass2(g.device, &render_pass, nil, &g.render_pass))
 }
 
 @(private = "file")
@@ -543,10 +557,10 @@ byte_arr_str :: proc(arr: ^[$N]byte) -> string {
 }
 
 Physical_Device_Features :: struct {
-	sync:                vk.PhysicalDeviceSynchronization2Features,
+	dynamic_rendering:   vk.PhysicalDeviceDynamicRenderingFeatures,
 	// ^
 	// | pNext
-	dynamic_rendering:   vk.PhysicalDeviceDynamicRenderingFeatures,
+	synchronization:     vk.PhysicalDeviceSynchronization2Features,
 	// ^
 	// | pNext
 	descriptor_indexing: vk.PhysicalDeviceDescriptorIndexingFeatures,
@@ -556,8 +570,11 @@ Physical_Device_Features :: struct {
 }
 
 get_physical_device_features :: proc(device: vk.PhysicalDevice, features: ^Physical_Device_Features) {
+	features.synchronization.sType = .PHYSICAL_DEVICE_SYNCHRONIZATION_2_FEATURES
+	features.synchronization.pNext = nil
+
 	features.descriptor_indexing.sType = .PHYSICAL_DEVICE_DESCRIPTOR_INDEXING_FEATURES
-	features.descriptor_indexing.pNext = nil
+	features.descriptor_indexing.pNext = &features.synchronization
 
 	features.features.sType = .PHYSICAL_DEVICE_FEATURES_2
 	features.features.pNext = &features.descriptor_indexing
@@ -566,6 +583,11 @@ get_physical_device_features :: proc(device: vk.PhysicalDevice, features: ^Physi
 }
 
 validate_physical_device_features :: proc(features: Physical_Device_Features) -> (bool, string) {
+	// SYNCHRONIZATION 2
+	if !features.synchronization.synchronization2 {
+		return false, "device does not support synchronization2"
+	}
+
 	// DESCRIPTOR INDEXING
 	if !features.descriptor_indexing.shaderSampledImageArrayNonUniformIndexing {
 		return false, "device does not support descriptor indexing shaderSampledImageArrayNonUniformIndexing"
@@ -604,9 +626,13 @@ validate_physical_device_features :: proc(features: Physical_Device_Features) ->
 }
 
 get_required_physical_device_features :: proc(features: ^Physical_Device_Features) {
+	// SYNCHRONIZATION2
+	features.synchronization.sType = .PHYSICAL_DEVICE_SYNCHRONIZATION_2_FEATURES
+	features.synchronization.synchronization2 = true
+
 	// DESCRIPTOR INDEXING
 	features.descriptor_indexing.sType = .PHYSICAL_DEVICE_DESCRIPTOR_INDEXING_FEATURES
-	features.descriptor_indexing.pNext = nil
+	features.descriptor_indexing.pNext = &features.synchronization
 	features.descriptor_indexing.shaderSampledImageArrayNonUniformIndexing = true
 	features.descriptor_indexing.descriptorBindingSampledImageUpdateAfterBind = true
 	features.descriptor_indexing.shaderUniformBufferArrayNonUniformIndexing = true

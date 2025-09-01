@@ -44,7 +44,7 @@ empty_scene_draw :: proc(s: ^Scene) {
 	vk.CmdSetScissor(e.g.cmd, 0, 1, &scissor)
 
 	// End gfx. ------------------------------
-	gfx.end_render(e.g, []vk.Semaphore{}, {})
+	gfx.end_render(e.g, {})
 
 }
 

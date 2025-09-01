@@ -130,7 +130,7 @@ particle_scene_draw :: proc(s: ^Scene) {
 	vk.CmdDraw(e.g.cmd, PARTICLE_COUNT, 1, 0, 0)
 
 	// End gfx. ------------------------------
-	gfx.end_render(e.g, []vk.Semaphore{data.semaphore}, {{.VERTEX_INPUT}})
+	gfx.end_render(e.g, []vk.SemaphoreSubmitInfo{{semaphore = data.semaphore, stageMask = {.VERTEX_INPUT}}})
 }
 
 @(private = "file")

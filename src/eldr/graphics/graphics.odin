@@ -328,38 +328,58 @@ begin_render :: proc(g: ^Graphics) -> (Frame_Data, Begin_Render_Error) {
 		clearValueCount = len(clear_values),
 		pClearValues = raw_data(&clear_values),
 	}
-	vk.CmdBeginRenderPass(g.cmd, &render_pass_info, .INLINE)
+
+	subpass_info := vk.SubpassBeginInfo {
+		sType    = .SUBPASS_BEGIN_INFO,
+		contents = .INLINE,
+	}
+
+	vk.CmdBeginRenderPass2(g.cmd, &render_pass_info, &subpass_info)
 
 	return Frame_Data{cmd = g.cmd}, .None
 }
 
-end_render :: proc(g: ^Graphics, wait_semaphores: []Semaphore, wait_stages: []Pipeline_Stage_Flags) {
+end_render :: proc(g: ^Graphics, wait_semaphore_infos: []vk.SemaphoreSubmitInfo) { 	// TODO: replace vk.SemaphoreSubmitInfo
 	if !g.render_started {
 		log.error("Call begin_render() before end_render()")
 	}
-	assert(len(wait_semaphores) == len(wait_stages))
 
 	vk.CmdEndRenderPass(g.cmd)
 	must(vk.EndCommandBuffer(g.cmd))
 
-	// wait_semaphores := append(&wait_semaphores, g.image_available_semaphore)
-	required_wait_semaphores := concat(wait_semaphores, []vk.Semaphore{g.image_available_semaphore})
-	defer delete(required_wait_semaphores)
+	required_wait_semaphore_infos := concat(
+		wait_semaphore_infos,
+		[]vk.SemaphoreSubmitInfo {
+			{
+				sType = .SEMAPHORE_SUBMIT_INFO,
+				semaphore = g.image_available_semaphore,
+				stageMask = {.COLOR_ATTACHMENT_OUTPUT},
+				deviceIndex = 0,
+			},
+		},
+		context.temp_allocator,
+	)
 
-	required_wait_stages := concat(wait_stages, []Pipeline_Stage_Flags{{.COLOR_ATTACHMENT_OUTPUT}})
-	defer delete(required_wait_stages)
-
-	submit_info := vk.SubmitInfo {
-		sType                = .SUBMIT_INFO,
-		waitSemaphoreCount   = cast(u32)len(required_wait_semaphores),
-		pWaitSemaphores      = raw_data(required_wait_semaphores),
-		pWaitDstStageMask    = raw_data(required_wait_stages),
-		commandBufferCount   = 1,
-		pCommandBuffers      = &g.cmd,
-		signalSemaphoreCount = 1,
-		pSignalSemaphores    = &g.swapchain.render_finished_semaphores[g.swapchain.image_index],
+	comand_buffer_info := vk.CommandBufferSubmitInfo {
+		sType         = .COMMAND_BUFFER_SUBMIT_INFO,
+		commandBuffer = g.cmd,
 	}
-	must(vk.QueueSubmit(g.graphics_queue, 1, &submit_info, g.fence))
+
+	signal_semaphore_info := vk.SemaphoreSubmitInfo {
+		sType     = .SEMAPHORE_SUBMIT_INFO,
+		semaphore = g.swapchain.render_finished_semaphores[g.swapchain.image_index],
+	}
+
+	submit_info := vk.SubmitInfo2 {
+		sType                    = .SUBMIT_INFO_2,
+		waitSemaphoreInfoCount   = cast(u32)len(required_wait_semaphore_infos),
+		pWaitSemaphoreInfos      = raw_data(required_wait_semaphore_infos),
+		commandBufferInfoCount   = 1,
+		pCommandBufferInfos      = &comand_buffer_info,
+		signalSemaphoreInfoCount = 1,
+		pSignalSemaphoreInfos    = &signal_semaphore_info,
+	}
+	must(vk.QueueSubmit2(g.graphics_queue, 1, &submit_info, g.fence))
 
 	present_info := vk.PresentInfoKHR {
 		sType              = .PRESENT_INFO_KHR,

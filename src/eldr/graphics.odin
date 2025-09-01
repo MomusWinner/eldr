@@ -16,9 +16,9 @@ get_width :: proc() -> u32 {return gfx.get_width(ctx.g)}
 get_height :: proc() -> u32 {return gfx.get_height(ctx.g)}
 
 begin_render :: proc() -> (Frame_Data, Begin_Render_Error) {return gfx.begin_render(ctx.g)}
-end_render :: proc() {gfx.end_render(ctx.g, {}, {})}
-end_render_wait :: proc(wait_semaphores: []Semaphore, wait_stages: []Pipeline_Stage_Flags) {
-	gfx.end_render(ctx.g, wait_semaphores, wait_stages)}
+end_render :: proc() {gfx.end_render(ctx.g, {})}
+end_render_wait :: proc(wait_semaphore_info: []vk.SemaphoreSubmitInfo) {
+	gfx.end_render(ctx.g, wait_semaphore_info)}
 
 cmd_set_full_viewport :: proc(cmd: Command_Buffer) {gfx.cmd_set_full_viewport(ctx.g, cmd)}
 
