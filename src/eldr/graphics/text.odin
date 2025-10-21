@@ -160,6 +160,7 @@ create_text :: proc(
 }
 
 text_set_string :: proc(text: ^Text, g: ^Graphics, text_str: string, loc := #caller_location) {
+	// delete(text.text)
 	text.text = text_str
 	deffered_destructor_add(g, text.vbo)
 
@@ -300,16 +301,19 @@ _generate_text_mesh :: proc(g: ^Graphics, text: ^Text, loc := #caller_location) 
 	order := [6]int{0, 1, 2, 0, 2, 3}
 
 	for ch in text.text {
+		code_point := cast(i32)ch
+
 		if ch == '\n' {
 			position.y -= PIXEL_SIZE * text.size * text.font.size
 			position.x = 0
 			continue
+		} else if code_point == 0 {
+			continue
 		}
 
-		c := cast(i32)ch
 		char_index: int
-		if cast(int)c in text.font.codepoint_to_char_index {
-			char_index = text.font.codepoint_to_char_index[cast(int)c]
+		if cast(int)code_point in text.font.codepoint_to_char_index {
+			char_index = text.font.codepoint_to_char_index[cast(int)code_point]
 		} else {
 			char_index = text.font.codepoint_to_char_index[cast(int)text.font.default_char]
 			assert(

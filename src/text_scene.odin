@@ -6,6 +6,7 @@ import "core:log"
 import "core:math"
 import "core:math/linalg/glsl"
 import "core:math/rand"
+import "core:strings"
 import "eldr"
 import "vendor:glfw"
 import vk "vendor:vulkan"
@@ -14,6 +15,7 @@ Text_Scene_Data :: struct {
 	font:        eldr.Font,
 	camera:      eldr.Camera,
 	text:        eldr.Text,
+	builder:     strings.Builder,
 	color_value: f32,
 }
 
@@ -55,6 +57,10 @@ text_scene_init :: proc(s: ^Scene) {
 		0.5,
 		eldr.vec4{0, 0.5, 0, 1},
 	)
+
+	strings.builder_init_len(&data.builder, len(data.text.text))
+	strings.write_string(&data.builder, data.text.text)
+
 	s.data = data
 }
 
@@ -73,7 +79,9 @@ text_scene_update :: proc(s: ^Scene, dt: f64) {
 	elapsed_time += dt
 	if elapsed_time > time_delta {
 		elapsed_time = 0
-		eldr.text_set_string(&data.text, fmt.aprintf("%s\n... ", data.text.text))
+		strings.write_string(&data.builder, "\n... ")
+		str := strings.to_string(data.builder)
+		eldr.text_set_string(&data.text, str)
 	}
 }
 
@@ -105,6 +113,7 @@ text_scene_draw :: proc(s: ^Scene) {
 text_scene_destroy :: proc(s: ^Scene) {
 	data := cast(^Text_Scene_Data)s.data
 
+	strings.builder_destroy(&data.builder)
 	eldr.destroy_text(&data.text)
 	eldr.unload_font(&data.font)
 
