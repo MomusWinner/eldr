@@ -20,10 +20,10 @@ Vertex :: struct {
 }
 
 PixelFormat :: enum {
-	GRAY,
-	GRAY_ALPHA,
-	R8G8B8,
-	R8G8B8A8,
+	R8,
+	RG8,
+	RGB8,
+	RGBA8,
 }
 
 Image :: struct {

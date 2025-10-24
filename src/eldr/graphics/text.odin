@@ -99,7 +99,7 @@ load_font :: proc(g: ^Graphics, create_info: Create_Font_Info, loc := #caller_lo
 		height   = cast(u32)create_info.atlas_height,
 		data     = raw_data(font_atlas_bitmap),
 		channels = 2,
-		pixel    = .GRAY,
+		pixel    = .R8,
 	}
 
 	texture := create_texture(g, image, create_info.path, 5)

@@ -30,14 +30,13 @@ create_texture :: proc(g: ^Graphics, image: Image, name: string = "empty", mip_l
 	format: vk.Format
 
 	switch image.pixel {
-	case .GRAY:
+	case .R8:
 		format = .R8_SRGB
-	case .GRAY_ALPHA:
+	case .RG8:
 		format = .R8G8_SRGB
-	case .R8G8B8:
-		// format = .R8G8B8_SRGB
+	case .RGB8:
 		format = .R8G8B8_SRGB
-	case .R8G8B8A8:
+	case .RGBA8:
 		format = .R8G8B8A8_SRGB
 	}
 

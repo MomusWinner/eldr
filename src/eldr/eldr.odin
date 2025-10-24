@@ -38,13 +38,13 @@ load_image :: proc(path: string, desired_channels: i32 = 0) -> (image: Image, ok
 
 	switch image.channels {
 	case 1:
-		image.pixel = .GRAY
+		image.pixel = .R8
 	case 2:
-		image.pixel = .GRAY_ALPHA
+		image.pixel = .RG8
 	case 3:
-		image.pixel = .R8G8B8
+		image.pixel = .RGB8
 	case 4:
-		image.pixel = .R8G8B8A8
+		image.pixel = .RGBA8
 	}
 
 	image.data = data
