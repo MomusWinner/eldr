@@ -182,8 +182,8 @@ destroy_surface :: proc(surface_h: Surface_Handle) {gfx.destroy_surface(ctx.gfx,
 surface_add_color_attachment :: proc(surface: ^Surface) {gfx.surface_add_color_attachment(surface, ctx.gfx)}
 surface_add_depth_attachment :: proc(surface: ^Surface) {gfx.surface_add_depth_attachment(surface, ctx.gfx)}
 @(require_results)
-surface_begin :: proc(surface: ^Surface) -> Frame_Data {return gfx.surface_begin(surface, ctx.gfx)}
-surface_end :: proc(surface: ^Surface, fame_data: Frame_Data) {gfx.surface_end(surface, fame_data)}
-surface_draw :: proc(surface: ^Surface, frame_data: Frame_Data, pipeline_h: Pipeline_Handle) {
-	gfx.surface_draw(surface, ctx.gfx, frame_data, pipeline_h)
+begin_surface :: proc(surface: ^Surface) -> Frame_Data {return gfx.begin_surface(surface, ctx.gfx)}
+end_surface :: proc(surface: ^Surface, fame_data: Frame_Data) {gfx.end_surface(surface, fame_data)}
+draw_surface :: proc(surface: ^Surface, frame_data: Frame_Data, pipeline_h: Pipeline_Handle) {
+	gfx.draw_surface(surface, ctx.gfx, frame_data, pipeline_h)
 }

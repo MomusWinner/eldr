@@ -360,21 +360,21 @@ Surface_Manager :: struct {
 
 Surface :: struct {
 	model:            Model,
+	transform:        Transform,
 	color_attachment: Maybe(Surface_Color_Attachment),
-	depth_attachment: Maybe(Surface_Attachment),
+	depth_attachment: Maybe(Surface_Depth_Attachment),
 	extent:           vk.Extent2D,
 }
 
-Surface_Attachment :: struct {
+Surface_Depth_Attachment :: struct {
 	resource: Texture,
-	handle:   Texture_Handle,
 	info:     vk.RenderingAttachmentInfo,
 }
 
 Surface_Color_Attachment :: struct {
-	using base:       Surface_Attachment,
-	resolve_resource: Texture,
-	resolve_handle:   Texture_Handle,
+	info:           vk.RenderingAttachmentInfo,
+	resource:       Texture,
+	resolve_handle: Texture_Handle,
 }
 
 // FAME

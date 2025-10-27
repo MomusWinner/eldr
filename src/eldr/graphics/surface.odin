@@ -71,7 +71,7 @@ surface_add_depth_attachment :: proc(surface: ^Surface, g: ^Graphics) {
 }
 
 @(require_results)
-surface_begin :: proc(surface: ^Surface, g: ^Graphics) -> Frame_Data {
+begin_surface :: proc(surface: ^Surface, g: ^Graphics) -> Frame_Data {
 	cmd := g.cmd
 
 	color_attachment, has_color_attachment := surface.color_attachment.?
@@ -117,7 +117,7 @@ surface_begin :: proc(surface: ^Surface, g: ^Graphics) -> Frame_Data {
 	return Frame_Data{cmd = cmd}
 }
 
-surface_end :: proc(surface: ^Surface, frame_data: Frame_Data) {
+end_surface :: proc(surface: ^Surface, frame_data: Frame_Data) {
 	vk.CmdEndRendering(frame_data.cmd)
 
 	color_attachment, has_color_attachment := surface.color_attachment.?
@@ -134,7 +134,7 @@ surface_end :: proc(surface: ^Surface, frame_data: Frame_Data) {
 	}
 }
 
-surface_draw :: proc(surface: ^Surface, g: ^Graphics, frame: Frame_Data, pipeline_h: Pipeline_Handle) {
+draw_surface :: proc(surface: ^Surface, g: ^Graphics, frame: Frame_Data, pipeline_h: Pipeline_Handle) {
 	camera := Camera{}
 	color_attachment, has_color := surface.color_attachment.?
 	assert(has_color)
