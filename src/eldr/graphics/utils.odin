@@ -1,5 +1,8 @@
 package graphics
 
+import "../common"
+import "base:runtime"
+import "core:fmt"
 import "core:log"
 import vk "vendor:vulkan"
 
@@ -10,10 +13,5 @@ must :: proc(result: vk.Result, msg: string = "", loc := #caller_location) {
 	}
 }
 
-@(private)
-concat :: proc(a: []$T, b: []T, allocator := context.allocator, loc := #caller_location) -> []T {
-	result := make([]T, len(a) + len(b), allocator)
-	copy(result, a)
-	copy(result[len(a):], b)
-	return result
-}
+merge :: common.merge
+assert_not_nil :: common.assert_not_nil
