@@ -65,23 +65,21 @@ create_default_pipeline :: proc() -> eldr.Pipeline_Handle {
 			attribute_descriptions = vert_attr[:],
 		},
 		stage_infos = []eldr.Pipeline_Stage_Info {
-			{stage = {.VERTEX}, shader_path = "assets/shaders/default.vert"},
-			{stage = {.FRAGMENT}, shader_path = "assets/shaders/default.frag"},
+			{stage = {.VERTEX}, shader_path = "assets/buildin/shaders/default.vert"},
+			{stage = {.FRAGMENT}, shader_path = "assets/buildin/shaders/default.frag"},
 		},
 		input_assembly = {topology = .TRIANGLE_LIST},
-		rasterizer = {polygonMode = .FILL, lineWidth = 1, cullMode = {}, frontFace = .CLOCKWISE},
-		multisampling = {rasterizationSamples = {._1}, minSampleShading = 1},
-		depth_stencil = {
-			depthTestEnable = true,
-			depthWriteEnable = true,
-			depthCompareOp = .LESS,
-			depthBoundsTestEnable = false,
-			minDepthBounds = 0,
-			maxDepthBounds = 0,
-			stencilTestEnable = false,
-			front = {},
-			back = {},
+		rasterizer = {polygon_mode = .FILL, line_width = 1, cull_mode = {.BACK}, front_face = .COUNTER_CLOCKWISE},
+		multisampling = {sample_count = ._4, min_sample_shading = 1},
+		depth = {
+			enable = true,
+			write_enable = true,
+			compare_op = .LESS,
+			bounds_test_enable = false,
+			min_bounds = 0,
+			max_bounds = 0,
 		},
+		stencil = {enable = true, front = {}, back = {}},
 	}
 
 	handle, ok := eldr.create_graphics_pipeline(&create_info)
@@ -129,23 +127,21 @@ create_postprocessing_pipeline :: proc() -> eldr.Pipeline_Handle {
 			attribute_descriptions = vert_attr[:],
 		},
 		stage_infos = []eldr.Pipeline_Stage_Info {
-			{stage = {.VERTEX}, shader_path = "assets/shaders/postprocessing.vert"},
-			{stage = {.FRAGMENT}, shader_path = "assets/shaders/postprocessing.frag"},
+			{stage = {.VERTEX}, shader_path = "assets/buildin/shaders/postprocessing.vert"},
+			{stage = {.FRAGMENT}, shader_path = "assets/buildin/shaders/postprocessing.frag"},
 		},
 		input_assembly = {topology = .TRIANGLE_LIST},
-		rasterizer = {polygonMode = .FILL, lineWidth = 1, cullMode = {}, frontFace = .CLOCKWISE},
-		multisampling = {rasterizationSamples = {._1}, minSampleShading = 1},
-		depth_stencil = {
-			depthTestEnable = true,
-			depthWriteEnable = true,
-			depthCompareOp = .LESS,
-			depthBoundsTestEnable = false,
-			minDepthBounds = 0,
-			maxDepthBounds = 0,
-			stencilTestEnable = false,
-			front = {},
-			back = {},
+		rasterizer = {polygon_mode = .FILL, line_width = 1, cull_mode = {}, front_face = .CLOCKWISE},
+		multisampling = {sample_count = ._4, min_sample_shading = 1},
+		depth = {
+			enable = true,
+			write_enable = true,
+			compare_op = .LESS,
+			bounds_test_enable = false,
+			min_bounds = 0,
+			max_bounds = 0,
 		},
+		stencil = {enable = true, front = {}, back = {}},
 	}
 
 	handle, ok := eldr.create_graphics_pipeline(&create_info)

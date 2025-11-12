@@ -9,7 +9,11 @@ import stb_image "vendor:stb/image"
 import vk "vendor:vulkan"
 
 Eldr :: struct {
-	gfx: ^gfx.Graphics,
+	window: glfw.WindowHandle,
+	gfx:    ^gfx.Graphics,
+	time:   struct {
+		frame_count: u32,
+	},
 }
 
 // @(private) TODO: make private

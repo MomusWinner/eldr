@@ -1,71 +1,74 @@
 package graphics
 
-import "base:intrinsics"
-import "base:runtime"
-
 import "core:log"
-import "core:math/linalg/glsl"
-import "core:slice"
-import "core:strings"
-
 import "vendor:glfw"
 import vk "vendor:vulkan"
 
-import "../common"
-import hm "../handle_map"
-import "shaderc"
-import "vma"
-
-DEBUG :: common.DEBUG
-VULKAN_API_VERSION :: vk.API_VERSION_1_4
-
-// Enables Vulkan debug logging and validation layers.
-ENABLE_VALIDATION_LAYERS :: #config(ENABLE_VALIDATION_LAYERS, ODIN_DEBUG)
-
-DEVICE_EXTENSIONS := []cstring {
-	vk.KHR_SWAPCHAIN_EXTENSION_NAME,
-	vk.EXT_DESCRIPTOR_INDEXING_EXTENSION_NAME,
-	// KHR_PORTABILITY_SUBSET_EXTENSION_NAME,
-}
-
-UNIFORM_DESCRIPTOR_MAX :: 3000
-UNIFORM_DESCRIPTOR_DYNAMIC_MAX :: 3000 // 30
-IMAGE_SAMPLER_DESCRIPTOR_MAX :: 3000
-STORAGE_DESCRIPTOR_MAX :: 3000
-DESCRIPTOR_SET_MAX :: 3000
-
-// UNIFORM_DESCRIPTOR_MAX :: 3000000
-// UNIFORM_DESCRIPTOR_DYNAMIC_MAX :: 3000000
-// IMAGE_SAMPLER_DESCRIPTOR_MAX :: 3000000
-// STORAGE_DESCRIPTOR_MAX :: 3000000
-// DESCRIPTOR_SET_MAX :: 3000000
-
+@(require_results)
 get_screen_size :: proc(g: ^Graphics) -> (width: u32, height: u32) {
 	width = g.swapchain.extent.width
 	height = g.swapchain.extent.height
 	return
 }
 
-get_screen_width :: proc(g: ^Graphics) -> u32 {
-	return g.swapchain.extent.width
-}
-
-get_screen_height :: proc(g: ^Graphics) -> u32 {
-	return g.swapchain.extent.height
-}
+@(require_results)
+get_screen_width :: proc(g: ^Graphics) -> u32 {return g.swapchain.extent.width}
+@(require_results)
+get_screen_height :: proc(g: ^Graphics) -> u32 {return g.swapchain.extent.height}
+@(require_results)
+get_screen_aspect :: proc(g: ^Graphics) -> f32 {return cast(f32)get_screen_width(g) / cast(f32)get_screen_height(g)}
 
 get_device_width :: proc(g: ^Graphics) -> u32 {
-	width, height := glfw.GetFramebufferSize(g.window)
+	width, height := glfw.GetFramebufferSize(g.window^)
 	return cast(u32)width
 }
 
 get_device_height :: proc(g: ^Graphics) -> u32 {
-	width, height := glfw.GetFramebufferSize(g.window)
+	width, height := glfw.GetFramebufferSize(g.window^)
 	return cast(u32)height
 }
 
 screen_resized :: proc(g: ^Graphics) -> bool {
 	return g.swapchain_resized
+}
+
+set_full_viewport_scissor :: proc(g: ^Graphics, frame_data: Frame_Data, loc := #caller_location) {
+	assert_not_nil(g, loc)
+
+	width := get_screen_width(g)
+	height := get_screen_height(g)
+
+	set_viewport(g, frame_data, width, height, loc = loc)
+	set_scissor(g, frame_data, width, height, loc = loc)
+}
+
+set_viewport :: proc(
+	g: ^Graphics,
+	frame_data: Frame_Data,
+	width, height: u32,
+	max_depth: f32 = 0.1,
+	loc := #caller_location,
+) {
+	viewport := vk.Viewport {
+		width    = cast(f32)width,
+		height   = cast(f32)height,
+		maxDepth = max_depth,
+	}
+	vk.CmdSetViewport(frame_data.cmd, 0, 1, &viewport)
+}
+
+set_scissor :: proc(
+	g: ^Graphics,
+	frame_data: Frame_Data,
+	width, height: u32,
+	offset: ivec2 = 0,
+	loc := #caller_location,
+) {
+	scissor := vk.Rect2D {
+		extent = {width = width, height = height},
+		offset = {x = offset.x, y = offset.y},
+	}
+	vk.CmdSetScissor(frame_data.cmd, 0, 1, &scissor)
 }
 
 begin_render :: proc(g: ^Graphics) -> Frame_Data {
@@ -78,11 +81,11 @@ begin_render :: proc(g: ^Graphics) -> Frame_Data {
 	}
 
 	// Wait for previous frame
-	must(vk.WaitForFences(g.device, 1, &g.fence, true, max(u64)))
+	must(vk.WaitForFences(g.vulkan_state.device, 1, &g.fence, true, max(u64)))
 
 	images: u32 = cast(u32)len(g.swapchain.images)
 	acquire_result := vk.AcquireNextImageKHR(
-		device = g.device,
+		device = g.vulkan_state.device,
 		swapchain = g.swapchain.swapchain,
 		timeout = max(u64),
 		semaphore = g.image_available_semaphore,
@@ -99,7 +102,7 @@ begin_render :: proc(g: ^Graphics) -> Frame_Data {
 		log.panicf("acquire next image failure: %v", acquire_result)
 	}
 
-	must(vk.ResetFences(g.device, 1, &g.fence))
+	must(vk.ResetFences(g.vulkan_state.device, 1, &g.fence))
 	must(vk.ResetCommandBuffer(frame_data.cmd, {}))
 
 	begin_info := vk.CommandBufferBeginInfo {
@@ -120,7 +123,7 @@ end_render :: proc(g: ^Graphics, frame_data: Frame_Data, sync_data: Sync_Data) {
 
 	must(vk.EndCommandBuffer(frame_data.cmd))
 
-	wait_semaphore_infos := concat(
+	wait_semaphore_infos := merge(
 		sync_data.wait_semaphore_infos,
 		[]vk.SemaphoreSubmitInfo {
 			{
@@ -152,7 +155,7 @@ end_render :: proc(g: ^Graphics, frame_data: Frame_Data, sync_data: Sync_Data) {
 		signalSemaphoreInfoCount = 1,
 		pSignalSemaphoreInfos    = &signal_semaphore_info,
 	}
-	must(vk.QueueSubmit2(g.graphics_queue, 1, &submit_info, g.fence))
+	must(vk.QueueSubmit2(g.vulkan_state.graphics_queue, 1, &submit_info, g.fence))
 
 	present_info := vk.PresentInfoKHR {
 		sType              = .PRESENT_INFO_KHR,
@@ -162,7 +165,7 @@ end_render :: proc(g: ^Graphics, frame_data: Frame_Data, sync_data: Sync_Data) {
 		pSwapchains        = &g.swapchain.swapchain,
 		pImageIndices      = &g.swapchain.image_index,
 	}
-	present_result := vk.QueuePresentKHR(g.present_queue, &present_info)
+	present_result := vk.QueuePresentKHR(g.vulkan_state.present_queue, &present_info)
 
 	switch {
 	case present_result == .ERROR_OUT_OF_DATE_KHR || present_result == .SUBOPTIMAL_KHR:
@@ -183,10 +186,10 @@ end_render :: proc(g: ^Graphics, frame_data: Frame_Data, sync_data: Sync_Data) {
 
 	_temp_pool_clear(g.temp_material_pool)
 	_temp_pool_clear(g.temp_transform_pool)
-	deffered_destructor_clean(g)
+	_deffered_destructor_clean(g)
 }
 
-begin_draw :: proc(g: ^Graphics, frame: Frame_Data) {
+begin_draw :: proc(g: ^Graphics, frame: Frame_Data) -> Frame_Data {
 	clear_color := vk.ClearValue {
 		color = {float32 = {0.0, 0.0, 0.0, 1.0}},
 	}
@@ -238,6 +241,14 @@ begin_draw :: proc(g: ^Graphics, frame: Frame_Data) {
 	}
 
 	vk.CmdBeginRendering(frame.cmd, &rendering_info)
+
+	frame := frame
+	frame.surface_info = {
+		type         = .Swapchain,
+		sample_count = g.swapchain.sample_count,
+	}
+
+	return frame
 }
 
 end_draw :: proc(g: ^Graphics, frame: Frame_Data) {
@@ -254,21 +265,14 @@ end_draw :: proc(g: ^Graphics, frame: Frame_Data) {
 	)
 }
 
-cmd_set_full_viewport :: proc(g: ^Graphics, cmd: Command_Buffer) {
-	viewport := vk.Viewport {
-		width    = cast(f32)get_screen_width(g),
-		height   = cast(f32)get_screen_height(g),
-		maxDepth = 0.1,
-	}
-	vk.CmdSetViewport(cmd, 0, 1, &viewport)
-
-	scissor := vk.Rect2D {
-		extent = g.swapchain.extent,
-	}
-	vk.CmdSetScissor(cmd, 0, 1, &scissor)
-}
-
 on_screen_resized :: proc(g: ^Graphics) {
-	_recreate_swapchain(g)
+	// Don't do anything when minimized.
+	for w, h := glfw.GetFramebufferSize(g.window^); w == 0 || h == 0; w, h = glfw.GetFramebufferSize(g.window^) {
+		glfw.WaitEvents()
+
+		// Handle closing while minimized.
+		if glfw.WindowShouldClose(g.window^) {return}
+	}
+	_recreate_swapchain(g.swapchain, g.vulkan_state, g.window)
 	_surface_manager_recreate_surfaces(g.surface_manager, g)
 }

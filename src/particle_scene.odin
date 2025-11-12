@@ -22,7 +22,6 @@ ParticleUniformBufferObject :: struct {
 	delta_time: f32,
 }
 
-
 ParticleSceneData :: struct {
 	uniform_buffer:      gfx.Buffer,
 	ssbo:                gfx.Buffer,
@@ -44,7 +43,7 @@ particle_scene_init :: proc(s: ^Scene) {
 	g := eldr.ctx.gfx
 
 	particles := _generate_particles(cast(f32)g.swapchain.extent.width, cast(f32)g.swapchain.extent.height)
-	renderer.uniform_buffer = gfx.create_uniform_buffer(g, cast(vk.DeviceSize)size_of(f32))
+	renderer.uniform_buffer = gfx.create_uniform_buffer(g.vulkan_state, cast(vk.DeviceSize)size_of(f32))
 
 	size := cast(vk.DeviceSize)(size_of(Particle) * cast(f32)len(particles))
 	renderer.ssbo = gfx.create_ssbo(g, raw_data(particles), size)
@@ -53,7 +52,7 @@ particle_scene_init :: proc(s: ^Scene) {
 	comp_pipeline, _ := gfx.get_compute_pipeline(g, renderer.comp_pipeline_h)
 
 	renderer.descriptor_set = gfx.create_descriptor_set(
-		g,
+		g.vulkan_state,
 		comp_pipeline,
 		comp_pipeline.create_info.set_infos[0],
 		{renderer.uniform_buffer, renderer.ssbo},
@@ -62,7 +61,7 @@ particle_scene_init :: proc(s: ^Scene) {
 
 	draw_pipeline, _ := gfx.get_graphics_pipeline(g, renderer.draw_pipeline_h)
 	draw_pipeline_descriptor_set := gfx.create_descriptor_set(
-		g,
+		g.vulkan_state,
 		draw_pipeline,
 		draw_pipeline.create_info.set_infos[0],
 		{renderer.ssbo},
@@ -74,23 +73,23 @@ particle_scene_init :: proc(s: ^Scene) {
 	semaphore_info := vk.SemaphoreCreateInfo {
 		sType = .SEMAPHORE_CREATE_INFO,
 	}
-	vk.CreateSemaphore(g.device, &semaphore_info, nil, &renderer.semaphore)
+	vk.CreateSemaphore(g.vulkan_state.device, &semaphore_info, nil, &renderer.semaphore)
 
 	// Fence
 	fence_info := vk.FenceCreateInfo {
 		sType = .FENCE_CREATE_INFO,
 		flags = {.SIGNALED},
 	}
-	vk.CreateFence(g.device, &fence_info, nil, &renderer.fence)
+	vk.CreateFence(g.vulkan_state.device, &fence_info, nil, &renderer.fence)
 
 	// Command buffer
 	alloc_info := vk.CommandBufferAllocateInfo {
 		sType              = .COMMAND_BUFFER_ALLOCATE_INFO,
 		level              = .PRIMARY,
-		commandPool        = g.command_pool,
+		commandPool        = g.vulkan_state.command_pool,
 		commandBufferCount = 1,
 	}
-	vk.AllocateCommandBuffers(g.device, &alloc_info, &renderer.command_buffer)
+	vk.AllocateCommandBuffers(g.vulkan_state.device, &alloc_info, &renderer.command_buffer)
 	s.data = renderer
 }
 
@@ -123,7 +122,7 @@ particle_scene_draw :: proc(s: ^Scene) {
 	vk.CmdSetScissor(e.gfx.cmd, 0, 1, &scissor)
 
 	draw_pipeline, _ := gfx.get_graphics_pipeline(e.gfx, data.draw_pipeline_h)
-	gfx.bind_pipeline(e.gfx, draw_pipeline)
+	gfx.bind_pipeline(e.gfx, draw_pipeline, frame_data)
 	offset := vk.DeviceSize{}
 	vk.CmdBindVertexBuffers(e.gfx.cmd, 0, 1, &data.ssbo.buffer, &offset)
 	gfx.bind_descriptor_set(e.gfx, draw_pipeline, &data.draw_descriptor_set)
@@ -214,19 +213,17 @@ _create_draw_pipeline :: proc(g: ^gfx.Graphics) -> gfx.Pipeline_Handle {
 			{stage = {.FRAGMENT}, shader_path = "assets/particle_frag.spv"},
 		},
 		input_assembly = {topology = .POINT_LIST},
-		rasterizer = {polygonMode = .FILL, lineWidth = 1, cullMode = {}, frontFace = .CLOCKWISE},
-		multisampling = {rasterizationSamples = {._1}, minSampleShading = 1},
-		depth_stencil = {
-			depthTestEnable = false,
-			depthWriteEnable = true,
-			depthCompareOp = .LESS,
-			depthBoundsTestEnable = false,
-			minDepthBounds = 0,
-			maxDepthBounds = 0,
-			stencilTestEnable = false,
-			front = {},
-			back = {},
+		rasterizer = {polygon_mode = .FILL, line_width = 1, cull_mode = {}, front_face = .CLOCKWISE},
+		multisampling = {sample_count = ._4, min_sample_shading = 1},
+		depth = {
+			enable = true,
+			write_enable = true,
+			compare_op = .LESS,
+			bounds_test_enable = false,
+			min_bounds = 0,
+			max_bounds = 0,
 		},
+		stencil = {enable = true, front = {}, back = {}},
 	}
 
 	handle, ok := gfx.create_graphics_pipeline(g, &create_info)
@@ -267,8 +264,8 @@ _particle_update_uniform_buffer :: proc(uniform_buffer: gfx.Buffer, delta_time: 
 
 @(private = "file")
 particle_compute :: proc(g: ^gfx.Graphics, data: ^ParticleSceneData) {
-	vk.WaitForFences(g.device, 1, &data.fence, true, max(u64))
-	vk.ResetFences(g.device, 1, &data.fence)
+	vk.WaitForFences(g.vulkan_state.device, 1, &data.fence, true, max(u64))
+	vk.ResetFences(g.vulkan_state.device, 1, &data.fence)
 	vk.ResetCommandBuffer(data.command_buffer, {})
 
 	being_info := vk.CommandBufferBeginInfo {
@@ -293,5 +290,5 @@ particle_compute :: proc(g: ^gfx.Graphics, data: ^ParticleSceneData) {
 		pSignalSemaphores    = &data.semaphore,
 	}
 
-	vk.QueueSubmit(g.graphics_queue, 1, &submit_info, data.fence)
+	vk.QueueSubmit(g.vulkan_state.graphics_queue, 1, &submit_info, data.fence)
 }

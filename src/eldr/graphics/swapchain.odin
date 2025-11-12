@@ -11,18 +11,37 @@ import vk "vendor:vulkan"
 import "vma"
 
 @(private)
-@(require_results)
-_swapchain_new :: proc(
-	window: glfw.WindowHandle,
-	allocator: vma.Allocator,
-	physical_device: vk.PhysicalDevice,
-	device: vk.Device,
-	surface: vk.SurfaceKHR,
-	samples: vk.SampleCountFlags,
-) -> ^Swap_Chain {
-	indices := _find_queue_families(physical_device, surface)
+_init_swapchain :: proc(g: ^Graphics, sample_count: Sample_Count_Flag) {
+	g.swapchain = _swapchain_new(g.window, g.vulkan_state, sample_count)
+	sc := _cmd_single_begin(g.vulkan_state)
+	_swapchain_setup(g.swapchain, g.vulkan_state, sc.command_buffer)
+	_cmd_single_end(sc, g.vulkan_state)
+}
 
-	support, result := _query_swapchain_support(physical_device, surface, context.temp_allocator)
+@(private)
+_destroy_swapchain :: proc(g: ^Graphics) {
+	_swapchain_destroy(g.swapchain, g.vulkan_state)
+}
+
+@(private)
+_recreate_swapchain :: proc(swapchain: ^Swap_Chain, vks: Vulkan_State, window: ^glfw.WindowHandle) {
+	vk.DeviceWaitIdle(vks.device)
+
+	_swapchain_destroy(swapchain, vks)
+
+	swapchain := _swapchain_new(window, vks, swapchain.sample_count)
+
+	sc := _cmd_single_begin(vks)
+	_swapchain_setup(swapchain, vks, sc.command_buffer)
+	_cmd_single_end(sc, vks)
+}
+
+@(private = "file")
+@(require_results)
+_swapchain_new :: proc(window: ^glfw.WindowHandle, vks: Vulkan_State, sample_count: Sample_Count_Flag) -> ^Swap_Chain {
+	indices := _find_queue_families(vks.physical_device, vks.surface)
+
+	support, result := _query_swapchain_support(vks.physical_device, vks.surface, context.temp_allocator)
 	if result != .SUCCESS {
 		log.panicf("query swapchain failed: %v", result)
 	}
@@ -38,7 +57,7 @@ _swapchain_new :: proc(
 
 	create_info := vk.SwapchainCreateInfoKHR {
 		sType            = .SWAPCHAIN_CREATE_INFO_KHR,
-		surface          = surface,
+		surface          = vks.surface,
 		minImageCount    = image_count,
 		imageFormat      = surface_format.format,
 		imageColorSpace  = surface_format.colorSpace,
@@ -58,84 +77,57 @@ _swapchain_new :: proc(
 	}
 
 	vk_swapchain: vk.SwapchainKHR
-	must(vk.CreateSwapchainKHR(device, &create_info, nil, &vk_swapchain))
+	must(vk.CreateSwapchainKHR(vks.device, &create_info, nil, &vk_swapchain))
 
 	swapchain := new(Swap_Chain)
 	swapchain.swapchain = vk_swapchain
 	swapchain.format = surface_format
 	swapchain.extent = extent
-	swapchain.samples = samples
-	swapchain._device = device
-	swapchain._physical_device = physical_device
-	swapchain._surface = surface
-	swapchain._allocator = allocator
-	_swapchain_setup_images(swapchain)
-	_swapchain_setup_semaphores(swapchain)
+	swapchain.sample_count = sample_count
+	_swapchain_setup_images(swapchain, vks)
+	_swapchain_setup_semaphores(swapchain, vks)
 
 	return swapchain
 }
 
-@(private)
-_swapchain_setup :: proc(swapchain: ^Swap_Chain, command_buffer: vk.CommandBuffer) {
-	_swapchain_setup_color_resource(swapchain)
-	_swapchain_setupt_depth_buffer(swapchain, command_buffer)
+@(private = "file")
+_swapchain_setup :: proc(swapchain: ^Swap_Chain, vks: Vulkan_State, command_buffer: vk.CommandBuffer) {
+	_swapchain_setup_color_resource(swapchain, vks)
+	_swapchain_setupt_depth_buffer(swapchain, vks, command_buffer)
 }
 
-@(private)
-_swapchain_destroy :: proc(swapchain: ^Swap_Chain) {
-	_destroy_texture_from_device(swapchain._device, swapchain._allocator, &swapchain.color_image)
-	_destroy_texture_from_device(swapchain._device, swapchain._allocator, &swapchain.depth_image)
+@(private = "file")
+_swapchain_destroy :: proc(swapchain: ^Swap_Chain, vks: Vulkan_State) {
+	destroy_texture(vks, &swapchain.color_image)
+	destroy_texture(vks, &swapchain.depth_image)
 
 	for sem in swapchain.render_finished_semaphores {
-		vk.DestroySemaphore(swapchain._device, sem, nil)
+		vk.DestroySemaphore(vks.device, sem, nil)
 	}
 	delete(swapchain.render_finished_semaphores)
 
 	for view in swapchain.image_views {
-		vk.DestroyImageView(swapchain._device, view, nil)
+		vk.DestroyImageView(vks.device, view, nil)
 	}
 
 	delete(swapchain.image_views)
 	delete(swapchain.images)
 
-	vk.DestroySwapchainKHR(swapchain._device, swapchain.swapchain, nil)
+	vk.DestroySwapchainKHR(vks.device, swapchain.swapchain, nil)
 
 	free(swapchain)
 }
 
-@(private)
-_recreate_swapchain :: proc(g: ^Graphics) {
-	// Don't do anything when minimized.
-	for w, h := glfw.GetFramebufferSize(g.window); w == 0 || h == 0; w, h = glfw.GetFramebufferSize(g.window) {
-		glfw.WaitEvents()
-
-		// Handle closing while minimized.
-		if glfw.WindowShouldClose(g.window) {break}
-	}
-
-	vk.DeviceWaitIdle(g.device)
-
-	_swapchain_destroy(g.swapchain)
-
-	g.swapchain = _swapchain_new(g.window, g.allocator, g.physical_device, g.device, g.surface, g.msaa_samples)
-
-	sc := _cmd_single_begin(g)
-	_swapchain_setup(g.swapchain, sc.command_buffer)
-	_cmd_single_end(sc)
-}
-
 @(private = "file")
-_swapchain_setup_color_resource :: proc(swapchain: ^Swap_Chain) {
+_swapchain_setup_color_resource :: proc(swapchain: ^Swap_Chain, vks: Vulkan_State) {
 	color_format := swapchain.format.format
 
 	image, allocation, allocation_info := _create_image(
-		swapchain._device,
-		swapchain._physical_device,
-		swapchain._allocator,
+		vks,
 		swapchain.extent.width,
 		swapchain.extent.height,
 		1,
-		swapchain.samples,
+		swapchain.sample_count,
 		color_format,
 		vk.ImageTiling.OPTIMAL,
 		vk.ImageUsageFlags{.TRANSIENT_ATTACHMENT, .COLOR_ATTACHMENT},
@@ -143,7 +135,7 @@ _swapchain_setup_color_resource :: proc(swapchain: ^Swap_Chain) {
 		vma.AllocationCreateFlags{},
 	)
 
-	view := _create_image_view(swapchain._device, image, color_format, {.COLOR}, 1)
+	view := _create_image_view(vks, image, color_format, {.COLOR}, 1)
 
 	swapchain.color_image = Texture {
 		name            = "swapchain_image",
@@ -155,16 +147,14 @@ _swapchain_setup_color_resource :: proc(swapchain: ^Swap_Chain) {
 }
 
 @(private = "file")
-_swapchain_setupt_depth_buffer :: proc(swapchain: ^Swap_Chain, command_buffer: vk.CommandBuffer) {
-	format := _find_depth_format(swapchain._physical_device)
+_swapchain_setupt_depth_buffer :: proc(swapchain: ^Swap_Chain, vks: Vulkan_State, command_buffer: vk.CommandBuffer) {
+	format := _find_depth_format(vks.physical_device)
 	image, allocation, allocation_info := _create_image(
-		swapchain._device,
-		swapchain._physical_device,
-		swapchain._allocator,
+		vks,
 		swapchain.extent.width,
 		swapchain.extent.height,
 		1,
-		swapchain.samples,
+		swapchain.sample_count,
 		format,
 		vk.ImageTiling.OPTIMAL,
 		vk.ImageUsageFlags{.DEPTH_STENCIL_ATTACHMENT},
@@ -174,7 +164,7 @@ _swapchain_setupt_depth_buffer :: proc(swapchain: ^Swap_Chain, command_buffer: v
 
 	_transition_image_layout(command_buffer, image, {.DEPTH}, format, .UNDEFINED, .DEPTH_STENCIL_ATTACHMENT_OPTIMAL, 1)
 
-	view := _create_image_view(swapchain._device, image, format, {.DEPTH}, 1)
+	view := _create_image_view(vks, image, format, {.DEPTH}, 1)
 	swapchain.depth_image = Texture {
 		image           = image,
 		view            = view,
@@ -184,29 +174,29 @@ _swapchain_setupt_depth_buffer :: proc(swapchain: ^Swap_Chain, command_buffer: v
 }
 
 @(private = "file")
-_swapchain_setup_images :: proc(swapchain: ^Swap_Chain) {
+_swapchain_setup_images :: proc(swapchain: ^Swap_Chain, vks: Vulkan_State) {
 	swapchain.image_index = 0
 
 	count: u32
-	must(vk.GetSwapchainImagesKHR(swapchain._device, swapchain.swapchain, &count, nil))
+	must(vk.GetSwapchainImagesKHR(vks.device, swapchain.swapchain, &count, nil))
 
 	swapchain.images = make([]vk.Image, count)
 	swapchain.image_views = make([]vk.ImageView, count)
-	must(vk.GetSwapchainImagesKHR(swapchain._device, swapchain.swapchain, &count, raw_data(swapchain.images)))
+	must(vk.GetSwapchainImagesKHR(vks.device, swapchain.swapchain, &count, raw_data(swapchain.images)))
 
 	for image, i in swapchain.images {
-		swapchain.image_views[i] = _create_image_view(swapchain._device, image, swapchain.format.format, {.COLOR}, 1)
+		swapchain.image_views[i] = _create_image_view(vks, image, swapchain.format.format, {.COLOR}, 1)
 	}
 }
 
 @(private = "file")
-_swapchain_setup_semaphores :: proc(swapchain: ^Swap_Chain) {
+_swapchain_setup_semaphores :: proc(swapchain: ^Swap_Chain, vks: Vulkan_State) {
 	swapchain.render_finished_semaphores = make([]vk.Semaphore, len(swapchain.images))
 	sem_info := vk.SemaphoreCreateInfo {
 		sType = .SEMAPHORE_CREATE_INFO,
 	}
 	for _, i in swapchain.images {
-		must(vk.CreateSemaphore(swapchain._device, &sem_info, nil, &swapchain.render_finished_semaphores[i]))
+		must(vk.CreateSemaphore(vks.device, &sem_info, nil, &swapchain.render_finished_semaphores[i]))
 	}
 }
 
@@ -240,12 +230,14 @@ _choose_swapchain_present_mode :: proc(modes: []vk.PresentModeKHR) -> vk.Present
 
 @(private = "file")
 @(require_results)
-_choose_swapchain_extent :: proc(window: glfw.WindowHandle, capabilities: vk.SurfaceCapabilitiesKHR) -> vk.Extent2D {
+_choose_swapchain_extent :: proc(window: ^glfw.WindowHandle, capabilities: vk.SurfaceCapabilitiesKHR) -> vk.Extent2D {
+	// special value (0xFFFFFFFF, 0xFFFFFFFF) indicating that the surface size will be determined
+	// by the extent of a swapchain targeting the surface.
 	if capabilities.currentExtent.width != max(u32) {
 		return capabilities.currentExtent
 	}
 
-	width, height := glfw.GetFramebufferSize(window)
+	width, height := glfw.GetFramebufferSize(window^)
 	return vk.Extent2D {
 		width = clamp(u32(width), capabilities.minImageExtent.width, capabilities.maxImageExtent.width),
 		height = clamp(u32(height), capabilities.minImageExtent.height, capabilities.maxImageExtent.height),

@@ -31,12 +31,11 @@ create_text_scene :: proc() -> Scene {
 text_scene_init :: proc(s: ^Scene) {
 	data := new(Text_Scene_Data)
 
-	eldr.camera_init(&data.camera, cast(f32)eldr.get_screen_width(), cast(f32)eldr.get_screen_height())
+	eldr.camera_init(&data.camera)
 	data.camera.position = {0, 0, 2}
 	data.camera.target = {0, 0, 0}
 	data.camera.up = {0, 1, 0}
 	data.camera.dirty = true
-	eldr.camera_apply(&data.camera)
 
 	data.font = eldr.load_font(
 		eldr.Create_Font_Info {
@@ -90,18 +89,14 @@ text_scene_draw :: proc(s: ^Scene) {
 
 	frame := eldr.begin_render()
 
-	if eldr.screen_resized() {
-		eldr.camera_set_aspect(&data.camera, cast(f32)eldr.get_screen_width(), cast(f32)eldr.get_screen_height())
-		eldr.camera_apply(&data.camera)
-	}
 	// Begin gfx.
 	// --------------------------------------------------------------------------------------------------------------------
 
-	eldr.cmd_set_full_viewport(frame.cmd)
+	eldr.set_full_viewport_scissor(frame)
 
-	eldr.begin_draw(frame)
+	base_frame := eldr.begin_draw(frame)
 
-	eldr.draw_text(&data.text, frame, data.camera)
+	eldr.draw_text(&data.text, base_frame, &data.camera)
 
 	eldr.end_draw(frame)
 

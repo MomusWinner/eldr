@@ -8,12 +8,29 @@ import image "vendor:stb/image"
 import tt "vendor:stb/truetype"
 import vk "vendor:vulkan"
 
+@(private)
+PIXEL_SIZE :: 0.002 // TODO:
+
 load_font :: proc(g: ^Graphics, create_info: Create_Font_Info, loc := #caller_location) -> Font {
+	assert_not_nil(g, loc)
+	assert(create_info.path != "", loc = loc)
+	assert(create_info.atlas_width > 0, loc = loc)
+	assert(create_info.atlas_height > 0, loc = loc)
+	assert(create_info.atlas_height > 0, loc = loc)
+	assert(create_info.padding >= 0, loc = loc)
+	assert(create_info.size > 0, loc = loc)
+	assert(len(create_info.regions) >= 0, loc = loc)
+	assert(create_info.default_char != 0, loc = loc)
+
 	data, ok := common.read_file(create_info.path, context.temp_allocator)
-	assert(ok, fmt.tprint("Couldn't load font. %s", create_info.path))
+	assert(ok, fmt.tprint("Couldn't load font. %s", create_info.path), loc)
 
 	font_number := tt.GetNumberOfFonts(raw_data(data))
-	assert(font_number != -1, fmt.tprintf("The font file doesn't correspond to valid font data.", create_info.path))
+	assert(
+		font_number != -1,
+		fmt.tprintf("The font file doesn't correspond to valid font data.", create_info.path),
+		loc,
+	)
 
 	total_size: i32
 	for regions in create_info.regions {
@@ -51,7 +68,7 @@ load_font :: proc(g: ^Graphics, create_info: Create_Font_Info, loc := #caller_lo
 				raw_data(packed_chars[processed_chars:processed_chars + region.size]),
 			),
 			fmt.tprintf(
-				"Couln't place char region [start: %d, size: %d]. Increase atlas size or reduce region size", // TODO:
+				"Couldn't place char region [start: %d, size: %d]. Increase atlas size or reduce region size.",
 				region.start,
 				region.size,
 			),
@@ -102,28 +119,27 @@ load_font :: proc(g: ^Graphics, create_info: Create_Font_Info, loc := #caller_lo
 		pixel    = .R8,
 	}
 
-	texture := create_texture(g, image, create_info.path, 5)
-	texture_h := bindless_store_texture(g, texture)
+	texture_h := bindless_store_texture(g, create_texture(g, image, create_info.path, 1))
 
 	return Font {
 		name = create_info.path,
 		size = create_info.size,
 		packed_chars = packed_chars,
 		aligned_quads = aligned_quads,
-		texture = texture,
 		texture_h = texture_h,
 		codepoint_to_char_index = codepoint_to_char_index,
 		default_char = create_info.default_char,
 	}
 }
 
-unload_font :: proc(g: ^Graphics, font: ^Font) {
+unload_font :: proc(g: ^Graphics, font: ^Font, loc := #caller_location) {
+	assert_not_nil(g, loc)
+	assert_not_nil(font, loc)
+
 	delete(font.packed_chars)
 	delete(font.aligned_quads)
 	delete(font.codepoint_to_char_index)
 }
-
-PIXEL_SIZE :: 0.002
 
 create_text :: proc(
 	g: ^Graphics,
@@ -134,6 +150,9 @@ create_text :: proc(
 	size: f32,
 	loc := #caller_location,
 ) -> Text {
+	assert_not_nil(g, loc)
+	assert_not_nil(font, loc)
+
 	transform := Transform{}
 	init_transform(g, &transform)
 	transform_set_position(&transform, start_position)
@@ -160,23 +179,33 @@ create_text :: proc(
 }
 
 text_set_string :: proc(text: ^Text, g: ^Graphics, text_str: string, loc := #caller_location) {
-	// delete(text.text)
+	assert_not_nil(text, loc)
+	assert_not_nil(g, loc)
+
 	text.text = text_str
-	deffered_destructor_add(g, text.vbo)
+	_deffered_destructor_add(g, text.vbo)
 
 	text.last_vbo = text.vbo
 	text.vbo, _ = _generate_text_mesh(g, text, loc)
 }
 
-text_set_color :: proc(text: ^Text, color: vec4) {
+text_set_color :: proc(text: ^Text, color: vec4, loc := #caller_location) {
+	assert_not_nil(text, loc)
+
 	material_set_color(&text.material, color)
 }
 
-text_set_position :: proc(text: ^Text, g: ^Graphics, position: vec3) {
+text_set_position :: proc(text: ^Text, g: ^Graphics, position: vec3, loc := #caller_location) {
+	assert_not_nil(text, loc)
+	assert_not_nil(g, loc)
+
 	transform_set_position(&text.transform, position)
 }
 
-draw_text :: proc(g: ^Graphics, text: ^Text, frame_data: Frame_Data, camera: Camera) {
+draw_text :: proc(g: ^Graphics, text: ^Text, frame_data: Frame_Data, camera: ^Camera, loc := #caller_location) {
+	assert_not_nil(g, loc)
+	assert_not_nil(text, loc)
+
 	_material_apply(&text.material, g)
 	_transform_apply(&text.transform, g)
 
@@ -186,11 +215,11 @@ draw_text :: proc(g: ^Graphics, text: ^Text, frame_data: Frame_Data, camera: Cam
 	offset := vk.DeviceSize{}
 	vk.CmdBindVertexBuffers(frame_data.cmd, 0, 1, &text.vbo.buffer, &offset)
 
-	bind_pipeline(g, pipeline)
+	bind_pipeline(g, pipeline, frame_data)
 	bindless_bind(g, frame_data.cmd, pipeline.layout)
 
 	const := Push_Constant {
-		camera   = camera.buffer_h.index,
+		camera   = _camera_get_buffer(camera, g, get_screen_aspect(g)).index,
 		model    = text.transform.buffer_h.index,
 		material = text.material.buffer_h.index,
 	}
@@ -207,9 +236,12 @@ draw_text :: proc(g: ^Graphics, text: ^Text, frame_data: Frame_Data, camera: Cam
 	vk.CmdDraw(frame_data.cmd, cast(u32)len(text.vertices), 1, 0, 0)
 }
 
-destroy_text :: proc(g: ^Graphics, text: ^Text) {
-	destroy_buffer(g, &text.vbo)
-	transform_destroy(&text.transform, g)
+destroy_text :: proc(g: ^Graphics, text: ^Text, loc := #caller_location) {
+	assert_not_nil(g, loc)
+	assert_not_nil(text, loc)
+
+	destroy_buffer(&text.vbo, g.vulkan_state)
+	destroy_transform(g, &text.transform)
 	destroy_material(g, &text.material)
 }
 
@@ -258,23 +290,21 @@ _text_default_pipeline :: proc(g: ^Graphics) -> Pipeline_Handle {
 			attribute_descriptions = vert_attr[:],
 		},
 		stage_infos = []Pipeline_Stage_Info {
-			{stage = {.VERTEX}, shader_path = "assets/shaders/text.vert"},
-			{stage = {.FRAGMENT}, shader_path = "assets/shaders/text.frag"},
+			{stage = {.VERTEX}, shader_path = "assets/buildin/shaders/text.vert"},
+			{stage = {.FRAGMENT}, shader_path = "assets/buildin/shaders/text.frag"},
 		},
 		input_assembly = {topology = .TRIANGLE_LIST},
-		rasterizer = {polygonMode = .FILL, lineWidth = 1, cullMode = {}, frontFace = .CLOCKWISE},
-		multisampling = {rasterizationSamples = {._1}, minSampleShading = 1},
-		depth_stencil = {
-			depthTestEnable = true,
-			depthWriteEnable = true,
-			depthCompareOp = .LESS,
-			depthBoundsTestEnable = false,
-			minDepthBounds = 0,
-			maxDepthBounds = 0,
-			stencilTestEnable = false,
-			front = {},
-			back = {},
+		rasterizer = {polygon_mode = .FILL, line_width = 1, cull_mode = {}, front_face = .CLOCKWISE},
+		multisampling = {sample_count = ._4, min_sample_shading = 1},
+		depth = {
+			enable = true,
+			write_enable = true,
+			compare_op = .LESS,
+			bounds_test_enable = false,
+			min_bounds = 0,
+			max_bounds = 0,
 		},
+		stencil = {enable = true, front = {}, back = {}},
 	}
 
 	handle, ok := create_graphics_pipeline(g, &create_info)
@@ -371,7 +401,7 @@ _generate_text_mesh :: proc(g: ^Graphics, text: ^Text, loc := #caller_location) 
 	}
 
 	vertices_size := cast(vk.DeviceSize)(size_of(FontVertex) * len(vertices))
-	vertex_buffer := create_vertex_buffer(g, raw_data(vertices), vertices_size)
+	vertex_buffer := create_vertex_buffer(g.vulkan_state, raw_data(vertices), vertices_size)
 
 	return vertex_buffer, vertices
 }

@@ -1,22 +1,18 @@
 package main
 
 import "base:runtime"
-
+import "core:c"
 import "core:fmt"
 import "core:log"
 import "core:math/linalg/glsl"
-
-import "core:c"
 import "core:mem"
 import "core:slice"
 import "core:strings"
 import "core:time"
-
-import "vendor:glfw"
-import vk "vendor:vulkan"
-
 import "eldr"
 import gfx "eldr/graphics"
+import "vendor:glfw"
+import vk "vendor:vulkan"
 
 g_ctx: runtime.Context
 
@@ -82,29 +78,23 @@ main :: proc() {
 	glfw.SetErrorCallback(glfw_error_callback)
 
 
-	eldr.init_graphic(window)
+	eldr.init_graphic(window, {swapchain_sample_count = ._4})
+
 	g := eldr.ctx.gfx // TODO:
 	defer eldr.destroy_eldr()
 
-	// scene := create_room_scene()
-	scene := create_text_scene()
+	scene := create_room_scene()
+	// scene := create_text_scene()
 	// scene := create_empty_scene()
+	// scene := create_test_scene()
 
 	scene.init(&scene)
 
-	for !glfw.WindowShouldClose(window) {
+	for !eldr.window_should_close() {
 		free_all(context.temp_allocator)
-
-		glfw.PollEvents()
 
 		if (quite) {
 			break
-		}
-
-		if (reload) {
-			vk.WaitForFences(g.device, 1, &g.fence, true, max(u64))
-			gfx.pipeline_hot_reload(g)
-			reload = false
 		}
 
 		dt = glfw.GetTime() - last_time
@@ -114,9 +104,15 @@ main :: proc() {
 		scene.update(&scene, dt)
 		scene.draw(&scene)
 
+		if (reload) {
+			vk.WaitForFences(g.vulkan_state.device, 1, &g.fence, true, max(u64))
+			gfx.pipeline_hot_reload(g)
+			reload = false
+		}
+
 		time.sleep(time.Second * 1 / 60) // FPS limit
 	}
-	vk.DeviceWaitIdle(g.device)
+	vk.DeviceWaitIdle(g.vulkan_state.device)
 
 	scene.destroy(&scene)
 

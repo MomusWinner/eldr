@@ -3,8 +3,8 @@ package main
 import "base:runtime"
 import "core:log"
 import "core:math"
-import "core:math/linalg/glsl"
 import "core:math/rand"
+import "core:time"
 import "eldr"
 import gfx "eldr/graphics"
 import "vendor:glfw"
@@ -30,15 +30,16 @@ create_room_scene :: proc() -> Scene {
 	}
 }
 
+depth_h: eldr.Texture_Handle
+
 room_scene_init :: proc(s: ^Scene) {
 	data := new(Room_Scene_Data)
 
-	eldr.camera_init(&data.camera, cast(f32)eldr.get_screen_width(), cast(f32)eldr.get_screen_height())
+	eldr.camera_init(&data.camera)
 	data.camera.position = {0, 0, 2}
 	data.camera.target = {0, 0, 0}
 	data.camera.up = {0, 1, 0}
 	data.camera.dirty = true
-	eldr.camera_apply(&data.camera)
 
 	data.room_texture_h = eldr.load_texture("./assets/room.png")
 	data.model = eldr.load_model("./assets/room.obj")
@@ -58,7 +59,7 @@ room_scene_init :: proc(s: ^Scene) {
 	data.transform.scale = {1, 1, 1}
 	data.transform.dirty = true
 
-	data.surface_h = eldr.create_surface(eldr.get_screen_width(), eldr.get_screen_height())
+	data.surface_h = eldr.create_surface()
 	surface, ok := eldr.get_surface(data.surface_h)
 	assert(ok)
 	eldr.surface_add_color_attachment(surface)
@@ -84,45 +85,37 @@ room_scene_draw :: proc(s: ^Scene) {
 
 	frame := eldr.begin_render()
 
-	if eldr.screen_resized() {
-		eldr.camera_set_aspect(&data.camera, cast(f32)eldr.get_screen_width(), cast(f32)eldr.get_screen_height())
-		eldr.camera_apply(&data.camera)
-	}
 	// Begin gfx.
 	// --------------------------------------------------------------------------------------------------------------------
 
-	eldr.cmd_set_full_viewport(frame.cmd)
+	eldr.set_full_viewport_scissor(frame)
 
-	// // Postprocessing
-	//
-	// // Surface
-	// surface, ok := eldr.get_surface(data.surface_h)
-	// assert(ok)
-	// surface_frame := eldr.surface_begin(surface)
-	// eldr.draw_model(data.model, data.camera, data.transform, frame.cmd)
-	// gfx.draw_text(
-	// 	eldr.ctx.g,
-	// 	eldr.ctx.g.text_manager,
-	// 	surface_frame,
-	// 	"H",
-	// 	data.font,
-	// 	vec3{0, 0, 0},
-	// 	gfx.vec4{255, 0, 0, 255},
-	// 	5,
-	// )
-	// eldr.surface_end(surface, surface_frame)
-	//
-	// // Swapchain
-	// eldr.begin_draw(frame)
-	// eldr.surface_draw(surface, frame, data.postprocessing_pipeline_h)
+	// Postprocessing
+
+	// Surface
+	surface, ok := eldr.get_surface(data.surface_h)
+	assert(ok)
+
+	surface_frame := eldr.begin_surface(surface, frame)
+	{
+		eldr.draw_model(surface_frame, data.model, &data.camera, &data.transform)
+		gfx.draw_square(eldr.ctx.gfx, surface_frame, &data.camera, {0.5, 0, 0}, {1, 1, 1}, {1, 1, 1, 1})
+	}
+	eldr.end_surface(surface, surface_frame)
+
+	// Swapchain
+	base_frame := eldr.begin_draw(frame)
+	{
+		eldr.draw_surface(surface, base_frame, data.postprocessing_pipeline_h)
+	}
+	eldr.end_draw(base_frame)
+
+	// // No Postprocessing
+	// base_frame := eldr.begin_draw(frame)
+	// {
+	// 	eldr.draw_model(base_frame, data.model, &data.camera, &data.transform)
+	// }
 	// eldr.end_draw(frame)
-
-	// No Postprocessing
-	eldr.begin_draw(frame)
-
-	eldr.draw_model(data.model, data.camera, &data.transform, frame.cmd)
-
-	eldr.end_draw(frame)
 
 	// --------------------------------------------------------------------------------------------------------------------
 	// End gfx.

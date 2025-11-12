@@ -6,6 +6,7 @@ import "base:runtime"
 import "core:c"
 import "core:log"
 import "core:mem"
+import "core:path/filepath"
 import "core:strings"
 import "shaderc"
 import vk "vendor:vulkan"
@@ -22,12 +23,18 @@ get_compute_pipeline :: proc(g: ^Graphics, handle: Pipeline_Handle) -> (^Compute
 	return _pipeline_manager_get_compute_pipeline(g.pipeline_manager, handle)
 }
 
-// @(private)
-// _init_global_pipelines :: proc(g: ^Graphics) {
-// 	g_default_pipeline_h = create_default_pipeline(g)
-// }
-//
-@(private)
+_init_pipeline_manager :: proc(g: ^Graphics, enable_compilation: bool) {
+	assert(g.pipeline_manager == nil)
+	g.pipeline_manager = new(Pipeline_Manager)
+	_pipeline_manager_init(g.pipeline_manager, enable_compilation)
+}
+
+_destroy_pipeline_manager :: proc(g: ^Graphics) {
+	_pipeline_manager_destroy(g.pipeline_manager, g.vulkan_state)
+	free(g.pipeline_manager)
+}
+
+@(private = "file")
 _pipeline_manager_init :: proc(pm: ^Pipeline_Manager, enable_compilation: bool) {
 	pm.enable_compilation = enable_compilation
 	if pm.enable_compilation {
@@ -39,13 +46,13 @@ _pipeline_manager_init :: proc(pm: ^Pipeline_Manager, enable_compilation: bool) 
 	}
 }
 
-@(private)
-_pipeline_manager_destroy :: proc(pm: ^Pipeline_Manager, device: vk.Device) {
+@(private = "file")
+_pipeline_manager_destroy :: proc(pm: ^Pipeline_Manager, vks: Vulkan_State) {
 	for &pipeline in pm.pipelines.values {
-		destroy_graphics_pipeline(device, &pipeline)
+		destroy_graphics_pipeline(vks, &pipeline)
 	}
 	for &pipeline in pm.compute_pipelines.values {
-		destroy_compute_pipeline(device, &pipeline)
+		destroy_compute_pipeline(vks, &pipeline)
 	}
 	hm.destroy(&pm.pipelines)
 	hm.destroy(&pm.compute_pipelines)
@@ -127,11 +134,23 @@ _shader_resolve_include :: proc "system" (
 ) -> ^shaderc.includeResult {
 	context = g_ctx
 
-	file := strings.concatenate({"./assets/shaders/", string(requestedSource)}, context.temp_allocator)
+	BUILDIN :: "buildin:"
+	source: string = strings.clone_from_cstring(requestedSource, allocator = context.temp_allocator)
+	path_to_include: strings.Builder
+	strings.builder_init_none(&path_to_include, context.temp_allocator)
 
+	if strings.starts_with(source, BUILDIN) {
+		strings.write_string(&path_to_include, "./assets/buildin/shaders/")
+		strings.write_string(&path_to_include, source[len(BUILDIN):])
+	} else {
+		strings.write_string(&path_to_include, "./assets/shaders/")
+		strings.write_string(&path_to_include, source)
+	}
+
+	file := strings.to_string(path_to_include)
 	content, ok := common.read_file(file, context.temp_allocator)
 	if !ok {
-		log.panic("Couldn't read include file", file)
+		log.error("Couldn't read include file", file)
 	}
 
 	result := new(shaderc.includeResult)
@@ -187,22 +206,3 @@ default_shader_attribute :: proc() -> (Vertex_Input_Binding_Description, [4]Vert
 
 	return bind_description, attribute_descriptions
 }
-
-// set_infos := []eldr.Pipeline_Set_Info {
-// 	{
-// 		set           = 0,
-// 		binding_infos = {
-// 			{binding = 0, descriptor_type = .COMBINED_IMAGE_SAMPLER, stage_flags = {.FRAGMENT}},
-//
-// 			// set:           u32,
-// 			// binding_infos: []Pipeline_Set_Binding_Info,
-// 			// flags:         []vk.DescriptorBindingFlags,
-//
-// 			// binding:          u32,
-// 			// descriptor_type:  vk.DescriptorType,
-// 			// descriptor_count: u32,
-// 			// stage_flags:      vk.ShaderStageFlags,
-// 		},
-// 		flags         = {{.UPDATE_AFTER_BIND, .PARTIALLY_BOUND}},
-// 	},
-// }

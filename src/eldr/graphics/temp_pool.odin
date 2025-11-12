@@ -4,6 +4,22 @@ package graphics
 
 import "core:log"
 
+@(private)
+_init_temp_pools :: proc(g: ^Graphics) {
+	g.temp_material_pool = new(Temp_Material_Pool)
+	_init_temp_material_pool(g, g.temp_material_pool, TEMP_POOL_MATERIAL_SIZE)
+	g.temp_transform_pool = new(Temp_Transform_Pool)
+	_init_temp_transform_pool(g, g.temp_transform_pool, TEMP_POOL_TRANSFORM_SIZE)
+}
+
+@(private)
+_destroy_temp_pools :: proc(g: ^Graphics) {
+	_destroy_temp_material_pool(g, g.temp_material_pool)
+	free(g.temp_material_pool)
+	_destroy_temp_transform_pool(g, g.temp_transform_pool)
+	free(g.temp_transform_pool)
+}
+
 @(private = "file")
 _init_temp_pool :: proc(pool: ^$P/Temp_Pool($T), size: int) {
 	pool.resources = make([]T, size)
@@ -18,9 +34,16 @@ _destroy_temp_pool :: proc(pool: ^$P/Temp_Pool($T)) {
 @(private)
 @(require_results)
 _temp_pool_acquire :: proc(pool: ^$P/Temp_Pool($T)) -> T {
-	if pool.next_free_resource >= cast(u32)len(pool.resources) {
-		log.panicf("Temp %v Pool exhausted: requested element but max %d reached.", typeid_of(T), len(pool.resources))
+	when DEBUG {
+		if pool.next_free_resource >= cast(u32)len(pool.resources) {
+			log.panicf(
+				"Temp %v Pool exhausted: requested element but max %d reached.",
+				typeid_of(T),
+				len(pool.resources),
+			)
+		}
 	}
+
 	defer pool.next_free_resource += 1
 
 	return pool.resources[pool.next_free_resource]
@@ -58,7 +81,7 @@ _init_temp_transform_pool :: proc(g: ^Graphics, pool: ^Temp_Transform_Pool, size
 @(private)
 _destroy_temp_transform_pool :: proc(g: ^Graphics, pool: ^Temp_Transform_Pool) {
 	for i in 0 ..< len(pool.resources) {
-		transform_destroy(&pool.resources[i], g)
+		destroy_transform(g, &pool.resources[i])
 	}
 	_destroy_temp_pool(pool)
 }

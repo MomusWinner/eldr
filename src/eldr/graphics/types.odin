@@ -21,6 +21,7 @@ mat4 :: common.mat4
 Vertex :: common.Vertex
 Image :: common.Image
 
+Sample_Count_Flag :: vk.SampleCountFlag
 Semaphore :: vk.Semaphore
 Vertex_Input_Binding_Description :: vk.VertexInputBindingDescription
 Vertex_Input_Attribute_Description :: vk.VertexInputAttributeDescription
@@ -36,31 +37,44 @@ Buildin_Resource :: struct {
 	square:               Model,
 }
 
+Vulkan_State :: struct {
+	instance_info:            vk.InstanceCreateInfo,
+	instance:                 vk.Instance,
+	physical_device:          vk.PhysicalDevice,
+	physical_device_property: vk.PhysicalDeviceProperties,
+	device:                   vk.Device,
+	dbg_messenger:            Maybe(vk.DebugUtilsMessengerEXT),
+	allocator:                vma.Allocator,
+	graphics_queue:           vk.Queue,
+	present_queue:            vk.Queue,
+	surface:                  vk.SurfaceKHR,
+	command_pool:             vk.CommandPool,
+	descriptor_pool:          vk.DescriptorPool,
+}
+
+Graphics_Limits :: struct {
+	max_sample_count:       Sample_Count_Flag,
+	max_sampler_anisotropy: f32,
+}
+
+Graphics_Init_Info :: struct {
+	swapchain_sample_count: Sample_Count_Flag,
+}
+
 Graphics :: struct {
-	window:                    glfw.WindowHandle,
-	instance_info:             vk.InstanceCreateInfo,
-	instance:                  vk.Instance,
-	dbg_messenger:             vk.DebugUtilsMessengerEXT, // TODO: Maybe()
-	allocator:                 vma.Allocator,
-	// 
-	msaa_samples:              vk.SampleCountFlags,
-	physical_device:           vk.PhysicalDevice,
-	physical_device_property:  vk.PhysicalDeviceProperties,
-	device:                    vk.Device,
-	surface:                   vk.SurfaceKHR,
-	graphics_queue:            vk.Queue,
-	present_queue:             vk.Queue,
+	window:                    ^glfw.WindowHandle,
+	vulkan_state:              Vulkan_State,
+	limits:                    Graphics_Limits,
+	// msaa_samples:              vk.SampleCountFlags,
 	swapchain:                 ^Swap_Chain,
 	// managers
 	pipeline_manager:          ^Pipeline_Manager,
 	surface_manager:           ^Surface_Manager,
-	temp_material_pool:        ^Temp_Material_Pool,
+	temp_material_pool:        ^Temp_Material_Pool, // TODO: move to Temps struct
 	temp_transform_pool:       ^Temp_Transform_Pool,
-	descriptor_pool:           vk.DescriptorPool,
 	bindless:                  ^Bindless,
-	command_pool:              vk.CommandPool,
 	cmd:                       vk.CommandBuffer,
-	image_available_semaphore: vk.Semaphore,
+	image_available_semaphore: vk.Semaphore, // TODO:
 	fence:                     vk.Fence,
 	swapchain_resized:         bool,
 	render_started:            bool,
@@ -85,6 +99,19 @@ Buffer :: struct {
 	allocation_info: vma.AllocationInfo,
 	mapped:          rawptr,
 }
+
+Resource :: union {
+	Buffer,
+	Texture,
+	Buffer_Handle,
+	Texture_Handle,
+}
+
+Deferred_Destructor :: struct {
+	resources:  [DEFERRED_DESTRUCTOR_SIZE]Resource,
+	next_index: int,
+}
+
 
 // PIPELINE
 
@@ -120,7 +147,6 @@ Create_Pipeline_Info :: struct {
 	set_infos:                []Pipeline_Set_Info,
 	push_constants:           []Push_Constant_Range,
 	stage_infos:              []Pipeline_Stage_Info,
-	render_pass:              Maybe(vk.RenderPass),
 	vertex_input_description: struct {
 		input_rate:             vk.VertexInputRate,
 		binding_description:    Vertex_Input_Binding_Description,
@@ -130,25 +156,27 @@ Create_Pipeline_Info :: struct {
 		topology: vk.PrimitiveTopology,
 	},
 	rasterizer:               struct {
-		polygonMode: vk.PolygonMode,
-		lineWidth:   f32,
-		cullMode:    vk.CullModeFlags,
-		frontFace:   vk.FrontFace,
+		polygon_mode: vk.PolygonMode,
+		line_width:   f32,
+		cull_mode:    vk.CullModeFlags,
+		front_face:   vk.FrontFace,
 	},
 	multisampling:            struct {
-		rasterizationSamples: vk.SampleCountFlags,
-		minSampleShading:     f32,
+		sample_count:       Sample_Count_Flag,
+		min_sample_shading: f32,
 	},
-	depth_stencil:            struct {
-		depthTestEnable:       b32,
-		depthWriteEnable:      b32,
-		depthCompareOp:        vk.CompareOp,
-		depthBoundsTestEnable: b32,
-		stencilTestEnable:     b32,
-		front:                 vk.StencilOpState,
-		back:                  vk.StencilOpState,
-		minDepthBounds:        f32,
-		maxDepthBounds:        f32,
+	depth:                    struct {
+		enable:             b32,
+		write_enable:       b32,
+		compare_op:         vk.CompareOp,
+		bounds_test_enable: b32,
+		min_bounds:         f32,
+		max_bounds:         f32,
+	},
+	stencil:                  struct {
+		enable: b32,
+		front:  vk.StencilOpState,
+		back:   vk.StencilOpState,
 	},
 }
 
@@ -171,6 +199,11 @@ Graphics_Pipeline :: struct {
 Compute_Pipeline :: struct {
 	using base:  Pipeline,
 	create_info: ^Create_Compute_Pipeline_Info,
+}
+
+Pipeline_Ptr :: union {
+	^Graphics_Pipeline,
+	^Compute_Pipeline,
 }
 
 Push_Constant :: struct {
@@ -196,7 +229,7 @@ Swap_Chain :: struct {
 	swapchain:                  vk.SwapchainKHR,
 	format:                     vk.SurfaceFormatKHR,
 	extent:                     vk.Extent2D,
-	samples:                    vk.SampleCountFlags,
+	sample_count:               Sample_Count_Flag,
 	color_image:                Texture,
 	depth_image:                Texture,
 	image_index:                u32,
@@ -204,10 +237,6 @@ Swap_Chain :: struct {
 	image_views:                []vk.ImageView,
 	frame_buffers:              []vk.Framebuffer,
 	render_finished_semaphores: []vk.Semaphore,
-	_allocator:                 vma.Allocator,
-	_device:                    vk.Device,
-	_physical_device:           vk.PhysicalDevice,
-	_surface:                   vk.SurfaceKHR,
 }
 
 // FEATURES
@@ -232,33 +261,21 @@ Camera_UBO :: struct {
 	projection: mat4,
 }
 
-Camera_Extension :: struct {
-	data:                       Camera_Extension_Data,
-	get_view_matrix_multiplier: proc(data: Camera_Extension_Data) -> mat4,
-	test:                       f32,
-}
-
 Camera :: struct {
-	view:       mat4,
-	projection: mat4,
-	position:   vec3,
-	aspect:     f32,
-	zoom:       vec3,
-	target:     vec3,
-	up:         vec3,
-	fov:        f32,
-	near:       f32,
-	far:        f32,
-	buffer_h:   Buffer_Handle,
-	dirty:      bool,
-	extension:  Maybe(Camera_Extension),
-}
-
-Camera_Extension_Data :: union {
-	Resoulution_Independed_Ext,
-}
-
-Empty_Camera_Ext :: struct {
+	position:    vec3,
+	zoom:        vec3,
+	target:      vec3,
+	up:          vec3,
+	fov:         f32,
+	near:        f32,
+	far:         f32,
+	dirty:       bool,
+	last_aspect: f32,
+	_buffer_h:   Buffer_Handle, // Camera_UBO
+	// private
+	// view:       mat4,
+	// projection: mat4,
+	// aspect:     f32,
 }
 
 // MODEL
@@ -311,7 +328,6 @@ Model :: struct {
 Font :: struct {
 	name:                    string,
 	size:                    f32,
-	texture:                 Texture,
 	texture_h:               Texture_Handle,
 	packed_chars:            []tt.packedchar,
 	aligned_quads:           []tt.aligned_quad,
@@ -364,6 +380,8 @@ Surface :: struct {
 	color_attachment: Maybe(Surface_Color_Attachment),
 	depth_attachment: Maybe(Surface_Depth_Attachment),
 	extent:           vk.Extent2D,
+	sample_count:     Sample_Count_Flag,
+	anisotropy:       f32,
 }
 
 Surface_Depth_Attachment :: struct {
@@ -377,16 +395,28 @@ Surface_Color_Attachment :: struct {
 	resolve_handle: Texture_Handle,
 }
 
-// FAME
+// FRAME
 
 Frame_Status :: enum {
 	Success,
 	IncorrectSwapchainSize,
 }
 
+Surface_Info_Type :: enum {
+	None,
+	Swapchain,
+	Surface,
+}
+
+Surface_Info :: struct {
+	type:         Surface_Info_Type,
+	sample_count: Sample_Count_Flag,
+}
+
 Frame_Data :: struct {
-	cmd:    vk.CommandBuffer,
-	status: Frame_Status,
+	cmd:          vk.CommandBuffer,
+	status:       Frame_Status,
+	surface_info: Surface_Info,
 }
 
 Render_Frame :: struct {
@@ -396,6 +426,18 @@ Render_Frame :: struct {
 
 Sync_Data :: struct {
 	wait_semaphore_infos: []vk.SemaphoreSubmitInfo,
+}
+
+// BINDLESS
+
+Texture_Handle :: distinct hm.Handle
+Buffer_Handle :: distinct hm.Handle
+
+Bindless :: struct {
+	set:        vk.DescriptorSet,
+	set_layout: vk.DescriptorSetLayout,
+	textures:   hm.Handle_Map(Texture, Texture_Handle),
+	buffers:    hm.Handle_Map(Buffer, Buffer_Handle),
 }
 
 // TEMP RESOURCES

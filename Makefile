@@ -5,7 +5,8 @@ DEBUG_BIN := $(BIN_DIR)/debug/$(APP_NAME)
 RELEASE_BIN := $(BIN_DIR)/release/$(APP_NAME)
 
 ODIN_FLAGS ?= 
-ODIN_DEBUG_FLAGS := -debug ${ODIN_FLAGS}
+# -sanitize:address
+ODIN_DEBUG_FLAGS := -debug ${ODIN_FLAGS} 
 ODIN_RELEASE_FLAGS := -o:speed -no-bounds-check -disable-assert ${ODIN_FLAGS}
 ODIN := odin
 
@@ -16,6 +17,7 @@ all: debug release
 debug:
 	@echo "Building debug ..."
 	@mkdir -p $(BIN_DIR)/debug
+
 	$(ODIN) build $(SRC_DIR) -out:$(DEBUG_BIN) ${ODIN_DEBUG_FLAGS}
 	@echo "Built: $(DEBUG_BIN)"
 

@@ -21,23 +21,21 @@ create_primitive_pipeline :: proc(g: ^Graphics) -> Pipeline_Handle {
 			attribute_descriptions = vert_attr[:],
 		},
 		stage_infos = []Pipeline_Stage_Info {
-			{stage = {.VERTEX}, shader_path = "assets/shaders/shape.vert"},
-			{stage = {.FRAGMENT}, shader_path = "assets/shaders/shape.frag"},
+			{stage = {.VERTEX}, shader_path = "assets/buildin/shaders/shape.vert"},
+			{stage = {.FRAGMENT}, shader_path = "assets/buildin/shaders/shape.frag"},
 		},
 		input_assembly = {topology = .TRIANGLE_LIST},
-		rasterizer = {polygonMode = .FILL, lineWidth = 1, cullMode = {}, frontFace = .CLOCKWISE},
-		multisampling = {rasterizationSamples = {._1}, minSampleShading = 1},
-		depth_stencil = {
-			depthTestEnable = true,
-			depthWriteEnable = true,
-			depthCompareOp = .LESS,
-			depthBoundsTestEnable = false,
-			minDepthBounds = 0,
-			maxDepthBounds = 0,
-			stencilTestEnable = false,
-			front = {},
-			back = {},
+		rasterizer = {polygon_mode = .FILL, line_width = 1, cull_mode = {}, front_face = .COUNTER_CLOCKWISE},
+		multisampling = {sample_count = ._4, min_sample_shading = 1},
+		depth = {
+			enable = true,
+			write_enable = true,
+			compare_op = .LESS,
+			bounds_test_enable = false,
+			min_bounds = 0,
+			max_bounds = 0,
 		},
+		stencil = {enable = true, front = {}, back = {}},
 	}
 
 	handle, ok := create_graphics_pipeline(g, &create_info)
@@ -56,10 +54,10 @@ create_square :: proc(g: ^Graphics) -> Model {
 	vertices[2] = {{-SIZE, -SIZE, 0.0}, {0.0, 0.0}, {SIZE, 0.0, 0.0}, {1.0, 1.0, 1.0, 1.0}}
 
 	vertices[3] = {{SIZE, SIZE, 0.0}, {SIZE, SIZE}, {0.0, 0.0, SIZE}, {1.0, 1.0, 1.0, 1.0}}
-	vertices[4] = {{-SIZE, SIZE, 0.0}, {0.0, SIZE}, {SIZE, SIZE, SIZE}, {1.0, 1.0, 1.0, 1.0}}
-	vertices[5] = {{-SIZE, -SIZE, 0}, {0.0, 0.0}, {0.0, SIZE, 0.0}, {1.0, 1.0, 1.0, 1.0}}
+	vertices[4] = {{-SIZE, -SIZE, 0}, {0.0, 0.0}, {0.0, SIZE, 0.0}, {1.0, 1.0, 1.0, 1.0}}
+	vertices[5] = {{-SIZE, SIZE, 0.0}, {0.0, SIZE}, {SIZE, SIZE, SIZE}, {1.0, 1.0, 1.0, 1.0}}
 
-	mesh := create_mesh(g, vertices, {})
+	mesh := create_mesh(g.vulkan_state, vertices, {})
 	meshes := make([]Mesh, 1)
 	meshes[0] = mesh
 
@@ -72,7 +70,7 @@ create_square :: proc(g: ^Graphics) -> Model {
 	return model
 }
 
-draw_square :: proc(g: ^Graphics, frame: Frame_Data, camera: Camera, position: vec3, scale: vec3, color: vec4) {
+draw_square :: proc(g: ^Graphics, frame_data: Frame_Data, camera: ^Camera, position: vec3, scale: vec3, color: vec4) {
 	model := g.buildin.square
 
 	material := _temp_pool_acquire(g.temp_material_pool)
@@ -86,5 +84,5 @@ draw_square :: proc(g: ^Graphics, frame: Frame_Data, camera: Camera, position: v
 	transform_set_scale(&transform, scale)
 	_transform_apply(&transform, g)
 
-	draw_model(g, model, camera, &transform, frame.cmd)
+	draw_model(g, frame_data, model, camera, &transform)
 }

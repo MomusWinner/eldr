@@ -6,6 +6,9 @@ import "core:fmt"
 import "core:log"
 import vk "vendor:vulkan"
 
+merge :: common.merge
+assert_not_nil :: common.assert_not_nil
+
 @(private)
 must :: proc(result: vk.Result, msg: string = "", loc := #caller_location) {
 	if result != .SUCCESS {
@@ -13,5 +16,6 @@ must :: proc(result: vk.Result, msg: string = "", loc := #caller_location) {
 	}
 }
 
-merge :: common.merge
-assert_not_nil :: common.assert_not_nil
+assert_frame_data :: #force_inline proc(frame_data: Frame_Data, loc := #caller_location) {
+	assert(frame_data.surface_info.type != .None, "Frame data has uninitialized surface information.", loc = loc)
+}

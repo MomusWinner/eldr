@@ -5,39 +5,20 @@ import vk "vendor:vulkan"
 @(private)
 SingleCommand :: struct {
 	command_buffer: vk.CommandBuffer,
-	_device:        vk.Device,
-	_command_pool:  vk.CommandPool,
-	_queue:         vk.Queue,
-}
-
-@(private)
-_cmd_single_begin :: proc {
-	_cmd_single_begin_from_device,
-	_cmd_single_begin_from_graphics,
 }
 
 @(private)
 @(require_results)
-_cmd_single_begin_from_graphics :: proc(g: ^Graphics) -> SingleCommand {
-	return _cmd_single_begin_from_device(g.device, g.command_pool, g.graphics_queue)
-}
-
-@(private)
-@(require_results)
-_cmd_single_begin_from_device :: proc(
-	device: vk.Device,
-	command_pool: vk.CommandPool,
-	queue: vk.Queue,
-) -> SingleCommand {
+_cmd_single_begin :: proc(vks: Vulkan_State) -> SingleCommand {
 	alloc_info := vk.CommandBufferAllocateInfo {
 		sType              = .COMMAND_BUFFER_ALLOCATE_INFO,
 		level              = .PRIMARY,
-		commandPool        = command_pool,
+		commandPool        = vks.command_pool,
 		commandBufferCount = 1,
 	}
 
 	command_buffer: vk.CommandBuffer
-	must(vk.AllocateCommandBuffers(device, &alloc_info, &command_buffer))
+	must(vk.AllocateCommandBuffers(vks.device, &alloc_info, &command_buffer))
 
 	begin_info := vk.CommandBufferBeginInfo {
 		sType = .COMMAND_BUFFER_BEGIN_INFO,
@@ -45,16 +26,11 @@ _cmd_single_begin_from_device :: proc(
 	}
 	must(vk.BeginCommandBuffer(command_buffer, &begin_info))
 
-	return SingleCommand {
-		command_buffer = command_buffer,
-		_device = device,
-		_command_pool = command_pool,
-		_queue = queue,
-	}
+	return SingleCommand{command_buffer = command_buffer}
 }
 
 @(private)
-_cmd_single_end :: proc(single_command: SingleCommand) {
+_cmd_single_end :: proc(single_command: SingleCommand, vks: Vulkan_State) {
 	command_buffer := single_command.command_buffer
 
 	must(vk.EndCommandBuffer(command_buffer))
@@ -65,10 +41,10 @@ _cmd_single_end :: proc(single_command: SingleCommand) {
 		pCommandBuffers    = &command_buffer,
 	}
 
-	must(vk.QueueSubmit(single_command._queue, 1, &submit_info, 0))
-	must(vk.QueueWaitIdle(single_command._queue))
+	must(vk.QueueSubmit(vks.graphics_queue, 1, &submit_info, 0))
+	must(vk.QueueWaitIdle(vks.graphics_queue))
 
-	vk.FreeCommandBuffers(single_command._device, single_command._command_pool, 1, &command_buffer)
+	vk.FreeCommandBuffers(vks.device, vks.command_pool, 1, &command_buffer)
 }
 
 @(private)

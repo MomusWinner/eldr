@@ -1,29 +1,37 @@
 package graphics
 
-import hm "../handle_map"
-import "core:log"
 import "core:math/linalg/glsl"
 
-init_material :: proc(g: ^Graphics, material: ^Material, pipeline_h: Pipeline_Handle) {
-	buffer := create_uniform_buffer(g, size_of(Material_UBO))
+init_material :: proc(g: ^Graphics, material: ^Material, pipeline_h: Pipeline_Handle, loc := #caller_location) {
+	assert_not_nil(g, loc)
+	assert_not_nil(material, loc)
+
+	buffer := create_uniform_buffer(g.vulkan_state, size_of(Material_UBO))
 	material.buffer_h = bindless_store_buffer(g, buffer)
 	material.pipeline_h = pipeline_h
 	material.color = {1, 1, 1, 1}
 	material.dirty = true
 }
 
-material_set_color :: proc(material: ^Material, color: color) {
+material_set_color :: proc(material: ^Material, color: color, loc := #caller_location) {
+	assert_not_nil(material, loc)
+
 	material.color = color
 	material.dirty = true
 }
 
-material_set_texture :: proc(material: ^Material, texture_h: Texture_Handle) {
+material_set_texture :: proc(material: ^Material, texture_h: Texture_Handle, loc := #caller_location) {
+	assert_not_nil(material, loc)
+
 	material.texture_h = texture_h
 	material.dirty = true
 }
 
 @(private)
-_material_apply :: proc(material: ^Material, g: ^Graphics) {
+_material_apply :: proc(material: ^Material, g: ^Graphics, loc := #caller_location) {
+	assert_not_nil(g, loc)
+	assert_not_nil(material, loc)
+
 	if !material.dirty {
 		return
 	}
@@ -38,16 +46,22 @@ _material_apply :: proc(material: ^Material, g: ^Graphics) {
 		texture = texture_index,
 	}
 	buffer := bindless_get_buffer(g, material.buffer_h)
-	_fill_buffer(g, buffer, size_of(Material_UBO), &ubo)
+	_fill_buffer(buffer, g.vulkan_state, size_of(Material_UBO), &ubo)
 	material.dirty = false
 }
 
-destroy_material :: proc(g: ^Graphics, material: ^Material) {
+destroy_material :: proc(g: ^Graphics, material: ^Material, loc := #caller_location) {
+	assert_not_nil(g, loc)
+	assert_not_nil(material, loc)
+
 	bindless_destroy_buffer(g, material.buffer_h)
 }
 
-init_transform :: proc(g: ^Graphics, transform: ^Transform) {
-	buffer := create_uniform_buffer(g, size_of(Transform_UBO))
+init_transform :: proc(g: ^Graphics, transform: ^Transform, loc := #caller_location) {
+	assert_not_nil(g, loc)
+	assert_not_nil(transform, loc)
+
+	buffer := create_uniform_buffer(g.vulkan_state, size_of(Transform_UBO))
 	transform.scale = 1
 	transform.rotation = 0
 	transform.position = 0
@@ -55,18 +69,25 @@ init_transform :: proc(g: ^Graphics, transform: ^Transform) {
 	transform.buffer_h = bindless_store_buffer(g, buffer)
 }
 
-transform_set_position :: proc(transform: ^Transform, position: vec3) {
+transform_set_position :: proc(transform: ^Transform, position: vec3, loc := #caller_location) {
+	assert_not_nil(transform, loc)
+
 	transform.position = position
 	transform.dirty = true
 }
 
-transform_set_scale :: proc(transform: ^Transform, scale: vec3) {
+transform_set_scale :: proc(transform: ^Transform, scale: vec3, loc := #caller_location) {
+	assert_not_nil(transform, loc)
+
 	transform.scale = scale
 	transform.dirty = true
 }
 
 @(private)
-_transform_apply :: proc(transform: ^Transform, g: ^Graphics) {
+_transform_apply :: proc(transform: ^Transform, g: ^Graphics, loc := #caller_location) {
+	assert_not_nil(transform, loc)
+	assert_not_nil(g, loc)
+
 	if !transform.dirty {
 		return
 	}
@@ -80,9 +101,10 @@ _transform_apply :: proc(transform: ^Transform, g: ^Graphics) {
 		tangens = 0,
 	}
 
-	_fill_buffer(g, buffer, size_of(Transform_UBO), &transform_ubo)
+	_fill_buffer(buffer, g.vulkan_state, size_of(Transform_UBO), &transform_ubo)
 }
 
-transform_destroy :: proc(transform: ^Transform, g: ^Graphics) {
+destroy_transform :: proc(g: ^Graphics, transform: ^Transform, loc := #caller_location) {
+	assert_not_nil(transform, loc)
 	bindless_destroy_buffer(g, transform.buffer_h)
 }

@@ -6,10 +6,15 @@ import gfx "graphics"
 vec2 :: common.vec2
 vec3 :: common.vec3
 vec4 :: common.vec4
+ivec2 :: common.ivec2
+ivec3 :: common.ivec3
+ivec4 :: common.ivec4
 color :: common.color
 Vertex :: common.Vertex
 Image :: common.Image
 
+Graphics_Init_Info :: gfx.Graphics_Init_Info
+Graphics_Limits :: gfx.Graphics_Limits
 
 Camera :: gfx.Camera
 
@@ -39,6 +44,7 @@ CharacterRegion :: gfx.CharacterRegion
 Surface :: gfx.Surface
 Surface_Handle :: gfx.Surface_Handle
 
+Sample_Count_Flag :: gfx.Sample_Count_Flag
 Command_Buffer :: gfx.Command_Buffer
 Gfx_Size :: gfx.Device_Size
 Pipeline_Stage_Flags :: gfx.Pipeline_Stage_Flags

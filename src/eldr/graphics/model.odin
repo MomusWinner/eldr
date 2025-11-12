@@ -3,10 +3,11 @@ package graphics
 import "core:log"
 import vk "vendor:vulkan"
 
-create_mesh :: proc(g: ^Graphics, vertices: []Vertex, indices: []u16) -> Mesh {
-	assert(len(vertices) > 0)
+create_mesh :: proc(vks: Vulkan_State, vertices: []Vertex, indices: []u16, loc := #caller_location) -> Mesh {
+	assert(len(vertices) > 0, loc = loc)
+
 	vertices_size := cast(vk.DeviceSize)(size_of(vertices[0]) * len(vertices))
-	vertex_buffer := create_vertex_buffer(g, raw_data(vertices), vertices_size)
+	vertex_buffer := create_vertex_buffer(vks, raw_data(vertices), vertices_size)
 
 	mesh := Mesh {
 		vertices = vertices,
@@ -16,7 +17,7 @@ create_mesh :: proc(g: ^Graphics, vertices: []Vertex, indices: []u16) -> Mesh {
 
 	if len(indices) != 0 {
 		indices_size := cast(vk.DeviceSize)(size_of(indices[0]) * len(indices))
-		index_buffer := create_index_buffer(g, raw_data(indices), indices_size)
+		index_buffer := create_index_buffer(vks, raw_data(indices), indices_size)
 		mesh.ebo = index_buffer
 	} else {
 		mesh.ebo = nil
@@ -25,54 +26,69 @@ create_mesh :: proc(g: ^Graphics, vertices: []Vertex, indices: []u16) -> Mesh {
 	return mesh
 }
 
-destroy_mesh :: proc(g: ^Graphics, mesh: ^Mesh) {
-	destroy_buffer(g, &mesh.vbo)
+destroy_mesh :: proc(vks: Vulkan_State, mesh: ^Mesh, loc := #caller_location) {
+	assert_not_nil(mesh)
+
+	destroy_buffer(&mesh.vbo, vks)
 	ebo, has_ebo := mesh.ebo.?
-	if has_ebo {destroy_buffer(g, &ebo)}
+	if has_ebo {destroy_buffer(&ebo, vks)}
 	delete(mesh.vertices)
 	delete(mesh.indices)
 }
 
 draw_mesh :: proc(
 	g: ^Graphics,
+	frame_data: Frame_Data,
 	mesh: ^Mesh,
 	material: ^Material,
-	camera: Camera,
+	camera: ^Camera,
 	transform: ^Transform,
-	cmd: vk.CommandBuffer,
+	loc := #caller_location,
 ) {
+	assert_not_nil(g, loc)
+	assert_not_nil(mesh, loc)
+	assert_not_nil(material, loc)
+	assert_not_nil(camera, loc)
+	assert_not_nil(transform, loc)
+	assert_frame_data(frame_data, loc)
+
 	ebo, has_ebo := mesh.ebo.?
 
 	offset := vk.DeviceSize{}
-	vk.CmdBindVertexBuffers(cmd, 0, 1, &mesh.vbo.buffer, &offset)
+	vk.CmdBindVertexBuffers(frame_data.cmd, 0, 1, &mesh.vbo.buffer, &offset)
 	if has_ebo {
-		vk.CmdBindIndexBuffer(cmd, ebo.buffer, 0, .UINT16)
+		vk.CmdBindIndexBuffer(frame_data.cmd, ebo.buffer, 0, .UINT16)
 	}
 
 	pipeline, ok := get_graphics_pipeline(g, material.pipeline_h)
 	assert(ok, "Couldn't get pipeline")
 
-
 	_transform_apply(transform, g)
 	_material_apply(material, g)
 
-	bind_pipeline(g, pipeline)
+	bind_pipeline(g, pipeline, frame_data, loc)
 
-	// gfx.bind_descriptor_set(e.g, pipeline, &data.descriptor_set)
-	bindless_bind(g, cmd, pipeline.layout)
+	bindless_bind(g, frame_data.cmd, pipeline.layout)
 
 	const := Push_Constant {
-		camera   = camera.buffer_h.index,
+		camera   = _camera_get_buffer(camera, g, get_screen_aspect(g)).index,
 		model    = transform.buffer_h.index,
 		material = material.buffer_h.index,
 	}
 
-	vk.CmdPushConstants(cmd, pipeline.layout, vk.ShaderStageFlags_ALL_GRAPHICS, 0, size_of(Push_Constant), &const)
+	vk.CmdPushConstants(
+		frame_data.cmd,
+		pipeline.layout,
+		vk.ShaderStageFlags_ALL_GRAPHICS,
+		0,
+		size_of(Push_Constant),
+		&const,
+	)
 
 	if has_ebo {
-		vk.CmdDrawIndexed(cmd, cast(u32)len(mesh.indices), 1, 0, 0, 0)
+		vk.CmdDrawIndexed(frame_data.cmd, cast(u32)len(mesh.indices), 1, 0, 0, 0)
 	} else {
-		vk.CmdDraw(cmd, cast(u32)len(mesh.vertices), 1, 0, 0)
+		vk.CmdDraw(frame_data.cmd, cast(u32)len(mesh.vertices), 1, 0, 0)
 	}
 }
 
@@ -82,7 +98,7 @@ create_model :: proc(meshes: []Mesh, materials: [dynamic]Material, mesh_material
 
 destroy_model :: proc(g: ^Graphics, model: ^Model) {
 	for &mesh in model.meshes {
-		destroy_mesh(g, &mesh)
+		destroy_mesh(g.vulkan_state, &mesh)
 	}
 	for &mat in model.materials { 	// TODO: material
 		destroy_material(g, &mat)
@@ -93,9 +109,18 @@ destroy_model :: proc(g: ^Graphics, model: ^Model) {
 	delete(model.mesh_material)
 }
 
-draw_model :: proc(g: ^Graphics, model: Model, camera: Camera, transform: ^Transform, cmd: vk.CommandBuffer) {
+draw_model :: proc(
+	g: ^Graphics,
+	frame_data: Frame_Data,
+	model: Model,
+	camera: ^Camera,
+	transform: ^Transform,
+	loc := #caller_location,
+) {
+	assert_not_nil(g, loc)
+	assert_not_nil(transform, loc)
 	for &mesh, i in model.meshes {
 		material_index := model.mesh_material[i]
-		draw_mesh(g, &mesh, &model.materials[material_index], camera, transform, cmd)
+		draw_mesh(g, frame_data, &mesh, &model.materials[material_index], camera, transform, loc)
 	}
 }

@@ -31,9 +31,9 @@ empty_scene_draw :: proc(s: ^Scene) {
 	frame_data := eldr.begin_render()
 	// Begin gfx. ------------------------------
 
-	eldr.cmd_set_full_viewport(frame_data.cmd)
+	eldr.set_full_viewport_scissor(frame_data)
 
-	eldr.begin_draw(frame_data)
+	base_frame := eldr.begin_draw(frame_data)
 
 	eldr.end_draw(frame_data)
 
