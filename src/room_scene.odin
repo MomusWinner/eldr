@@ -99,6 +99,7 @@ room_scene_draw :: proc(s: ^Scene) {
 	surface_frame := eldr.begin_surface(surface, frame)
 	{
 		eldr.draw_model(surface_frame, data.model, &data.camera, &data.transform)
+		eldr.draw_square(surface_frame, &data.camera, {0, 0, 0}, {1, 1, 1}, {1, 0, 0, 1})
 	}
 	eldr.end_surface(surface, surface_frame)
 

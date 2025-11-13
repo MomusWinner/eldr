@@ -46,18 +46,21 @@ create_primitive_pipeline :: proc(g: ^Graphics) -> Pipeline_Handle {
 	return handle
 }
 
-create_square :: proc(g: ^Graphics) -> Model {
-	SIZE :: 0.3
-	vertices := make([]Vertex, 6, context.allocator) // TODO: move to manager
-	vertices[0] = {{SIZE, SIZE, 0.0}, {SIZE, SIZE}, {0.0, 0.0, SIZE}, {1.0, 1.0, 1.0, 1.0}}
-	vertices[1] = {{SIZE, -SIZE, 0.0}, {SIZE, 0.0}, {0.0, SIZE, 0.0}, {1.0, 1.0, 1.0, 1.0}}
-	vertices[2] = {{-SIZE, -SIZE, 0.0}, {0.0, 0.0}, {SIZE, 0.0, 0.0}, {1.0, 1.0, 1.0, 1.0}}
+create_square_mesh :: proc(g: ^Graphics, size: f32, allocator := context.allocator) -> Mesh {
+	vertices := make([]Vertex, 6, context.allocator)
+	vertices[0] = {{size, size, 0.0}, {size, size}, {0.0, 0.0, size}, {1.0, 1.0, 1.0, 1.0}}
+	vertices[1] = {{size, -size, 0.0}, {size, 0.0}, {0.0, size, 0.0}, {1.0, 1.0, 1.0, 1.0}}
+	vertices[2] = {{-size, -size, 0.0}, {0.0, 0.0}, {size, 0.0, 0.0}, {1.0, 1.0, 1.0, 1.0}}
 
-	vertices[3] = {{SIZE, SIZE, 0.0}, {SIZE, SIZE}, {0.0, 0.0, SIZE}, {1.0, 1.0, 1.0, 1.0}}
-	vertices[4] = {{-SIZE, -SIZE, 0}, {0.0, 0.0}, {0.0, SIZE, 0.0}, {1.0, 1.0, 1.0, 1.0}}
-	vertices[5] = {{-SIZE, SIZE, 0.0}, {0.0, SIZE}, {SIZE, SIZE, SIZE}, {1.0, 1.0, 1.0, 1.0}}
+	vertices[3] = {{size, size, 0.0}, {size, size}, {0.0, 0.0, size}, {1.0, 1.0, 1.0, 1.0}}
+	vertices[4] = {{-size, -size, 0}, {0.0, 0.0}, {0.0, size, 0.0}, {1.0, 1.0, 1.0, 1.0}}
+	vertices[5] = {{-size, size, 0.0}, {0.0, size}, {size, size, size}, {1.0, 1.0, 1.0, 1.0}}
 
-	mesh := create_mesh(g.vulkan_state, vertices, {})
+	return create_mesh(g.vulkan_state, vertices, {})
+}
+
+create_square_model :: proc(g: ^Graphics) -> Model {
+	mesh := create_square_mesh(g, 0.3)
 	meshes := make([]Mesh, 1)
 	meshes[0] = mesh
 
@@ -75,8 +78,8 @@ draw_square :: proc(g: ^Graphics, frame_data: Frame_Data, camera: ^Camera, posit
 
 	material := _temp_pool_acquire(g.temp_material_pool)
 	model.materials[0] = material
-	model.materials[0].pipeline_h = g.buildin.primitive_pipeline_h
-	model.materials[0].color = color
+	material_set_pipeline(&model.materials[0], g.buildin.primitive_pipeline_h)
+	material_set_color(&model.materials[0], color)
 	_material_apply(&model.materials[0], g)
 
 	transform := _temp_pool_acquire(g.temp_transform_pool)

@@ -90,25 +90,6 @@ create_default_pipeline :: proc() -> eldr.Pipeline_Handle {
 	return handle
 }
 
-// set_infos := []eldr.Pipeline_Set_Info {
-// 	{
-// 		set           = 0,
-// 		binding_infos = {
-// 			{binding = 0, descriptor_type = .COMBINED_IMAGE_SAMPLER, stage_flags = {.FRAGMENT}},
-//
-// 			// set:           u32,
-// 			// binding_infos: []Pipeline_Set_Binding_Info,
-// 			// flags:         []vk.DescriptorBindingFlags,
-//
-// 			// binding:          u32,
-// 			// descriptor_type:  vk.DescriptorType,
-// 			// descriptor_count: u32,
-// 			// stage_flags:      vk.ShaderStageFlags,
-// 		},
-// 		flags         = {{.UPDATE_AFTER_BIND, .PARTIALLY_BOUND}},
-// 	},
-// }
-
 create_postprocessing_pipeline :: proc() -> eldr.Pipeline_Handle {
 	vert_bind, vert_attr := default_shader_attribute()
 
@@ -131,7 +112,7 @@ create_postprocessing_pipeline :: proc() -> eldr.Pipeline_Handle {
 			{stage = {.FRAGMENT}, shader_path = "assets/buildin/shaders/postprocessing.frag"},
 		},
 		input_assembly = {topology = .TRIANGLE_LIST},
-		rasterizer = {polygon_mode = .FILL, line_width = 1, cull_mode = {}, front_face = .CLOCKWISE},
+		rasterizer = {polygon_mode = .FILL, line_width = 1, cull_mode = {.BACK}, front_face = .COUNTER_CLOCKWISE},
 		multisampling = {sample_count = ._4, min_sample_shading = 1},
 		depth = {
 			enable = true,

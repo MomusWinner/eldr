@@ -251,3 +251,9 @@ end_surface :: proc(surface: ^Surface, frame_data: Frame_Data, loc := #caller_lo
 draw_surface :: proc(surface: ^Surface, frame_data: Frame_Data, pipeline_h: Pipeline_Handle, loc := #caller_location) {
 	gfx.draw_surface(surface, ctx.gfx, frame_data, pipeline_h, loc)
 }
+
+// PRIMITIVE
+
+draw_square :: proc(frame_data: Frame_Data, camera: ^Camera, position: vec3, scale: vec3, color: color) {
+	gfx.draw_square(ctx.gfx, frame_data, camera, position, scale, color)
+}

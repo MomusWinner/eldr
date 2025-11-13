@@ -313,16 +313,7 @@ _surface_init :: proc(
 	material: Material
 	init_material(g, &material, {})
 
-	vertices := make([]Vertex, 6, allocator) // TODO: move to manager
-	vertices[0] = {{1.0, 1.0, 0.0}, {1.0, 1.0}, {0.0, 0.0, 1.0}, {1.0, 1.0, 1.0, 1.0}}
-	vertices[1] = {{1.0, -1.0, 0.0}, {1.0, 0.0}, {0.0, 1.0, 0.0}, {1.0, 1.0, 1.0, 1.0}}
-	vertices[2] = {{-1.0, -1.0, 0.0}, {0.0, 0.0}, {1.0, 0.0, 0.0}, {1.0, 1.0, 1.0, 1.0}}
-
-	vertices[3] = {{1.0, 1.0, 0.0}, {1.0, 1.0}, {0.0, 0.0, 1.0}, {1.0, 1.0, 1.0, 1.0}}
-	vertices[4] = {{-1.0, 1.0, 0.0}, {0.0, 1.0}, {1.0, 1.0, 1.0}, {1.0, 1.0, 1.0, 1.0}}
-	vertices[5] = {{-1.0, -1.0, 0}, {0.0, 0.0}, {0.0, 1.0, 0.0}, {1.0, 1.0, 1.0, 1.0}}
-
-	mesh := create_mesh(g.vulkan_state, vertices, {})
+	mesh := create_square_mesh(g, 1)
 
 	meshes := make([]Mesh, 1)
 	meshes[0] = mesh

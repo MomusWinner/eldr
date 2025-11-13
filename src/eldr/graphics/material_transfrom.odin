@@ -27,6 +27,13 @@ material_set_texture :: proc(material: ^Material, texture_h: Texture_Handle, loc
 	material.dirty = true
 }
 
+material_set_pipeline :: proc(material: ^Material, pipeline_h: Pipeline_Handle, loc := #caller_location) {
+	assert_not_nil(material, loc)
+
+	material.pipeline_h = pipeline_h
+	material.dirty = true
+}
+
 @(private)
 _material_apply :: proc(material: ^Material, g: ^Graphics, loc := #caller_location) {
 	assert_not_nil(g, loc)

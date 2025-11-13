@@ -566,7 +566,7 @@ get_required_physical_device_features :: proc(features: ^Physical_Device_Feature
 @(private = "file")
 _init_buildin_resources :: proc(g: ^Graphics) {
 	g.buildin = new(Buildin_Resource)
-	g.buildin.square = create_square(g)
+	g.buildin.square = create_square_model(g)
 	g.buildin.text_pipeline_h = _text_default_pipeline(g)
 	g.buildin.primitive_pipeline_h = create_primitive_pipeline(g)
 }
