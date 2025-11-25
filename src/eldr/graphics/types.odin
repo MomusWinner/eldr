@@ -17,6 +17,7 @@ vec4 :: common.vec4
 color :: common.color
 ivec4 :: common.ivec4
 mat4 :: common.mat4
+quat :: common.quat
 
 Vertex :: common.Vertex
 Image :: common.Image
@@ -282,8 +283,8 @@ Camera :: struct {
 
 Material :: struct {
 	color:      vec4,
-	pipeline_h: Pipeline_Handle,
 	texture_h:  Maybe(Texture_Handle),
+	pipeline_h: Pipeline_Handle,
 	buffer_h:   Buffer_Handle,
 	dirty:      bool,
 }
@@ -300,7 +301,7 @@ Transform :: struct {
 	buffer_h: Buffer_Handle,
 	model:    mat4,
 	position: vec3,
-	rotation: vec3,
+	rotation: quat,
 	scale:    vec3,
 	dirty:    bool,
 }

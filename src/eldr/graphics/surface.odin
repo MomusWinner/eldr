@@ -324,7 +324,7 @@ _surface_init :: proc(
 	mesh_material := make([dynamic]int, 1, allocator)
 	mesh_material[0] = 0
 
-	init_transform(g, &surface.transform)
+	init_trf(g, &surface.transform)
 
 	surface.model = create_model(meshes, materials, mesh_material)
 	surface.sample_count = sample_count

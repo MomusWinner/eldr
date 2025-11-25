@@ -1,5 +1,6 @@
 package eldr
 
+import "base:runtime"
 import "core:c"
 import "core:log"
 import "core:strings"
@@ -10,39 +11,11 @@ import "vendor:glfw"
 import stb_image "vendor:stb/image"
 import vk "vendor:vulkan"
 
-game_event_proc :: proc(user_data: rawptr)
-
-Game_Time :: struct {
-	total_game_time:         f64,
-	delta_time:              f32,
-	target_time:             f32,
-	fixed_target_time:       f32,
-	previous_frame:          f64,
-	fixed_update_total_time: f64,
-}
-
-Eldr :: struct {
-	window:            glfw.WindowHandle,
-	gfx:               ^gfx.Graphics,
-	game_time:         Game_Time,
-	user_data:         rawptr,
-	fixed_update_proc: game_event_proc,
-	update_proc:       game_event_proc,
-	draw_proc:         game_event_proc,
-	destroy_proc:      game_event_proc,
-}
-
-Eldr_Info :: struct {
-	gfx:    Graphics_Init_Info,
-	window: struct {
-		title:  string,
-		width:  i32,
-		height: i32,
-	},
-}
-
 // @(private)  TODO: make private
 ctx: Eldr
+
+@(private)
+g_err_ctx: runtime.Context
 
 init :: proc(
 	user_data: rawptr,
@@ -53,6 +26,7 @@ init :: proc(
 	info: Eldr_Info,
 	loc := #caller_location,
 ) {
+
 	ctx.user_data = user_data
 	ctx.fixed_update_proc = fixed_update_proc
 	ctx.update_proc = update_proc
@@ -80,15 +54,17 @@ init :: proc(
 	)
 	assert(window != nil, "Couldn't create window. Please check window settings", loc)
 
+	g_err_ctx = context
+	glfw.SetErrorCallback(_glfw_error_callback)
 
 	ctx.window = window
 	ctx.game_time.target_time = 1.0 / 60.0
 	ctx.game_time.fixed_target_time = 1.0 / 38.0
+	ctx.window = window
 
-	_init_graphic(window, info.gfx)
+	_init_graphic(&ctx.window, info.gfx)
+	_init_input(&ctx.window)
 }
-
-fixed_frame_count: u64
 
 run :: proc() {
 	for (!_window_should_close()) {
@@ -104,12 +80,13 @@ run :: proc() {
 
 		free_all(context.temp_allocator)
 
+		_update_input()
+
 		fixed_update_dept_time := ctx.game_time.total_game_time - ctx.game_time.fixed_update_total_time
 		fixed_update_dept_count := cast(int)(fixed_update_dept_time / cast(f64)ctx.game_time.fixed_target_time)
 
 		if fixed_update_dept_count > 0 {
 			for i in 0 ..< fixed_update_dept_count {
-				fixed_frame_count += 1
 				ctx.fixed_update_proc(ctx.user_data)
 				ctx.game_time.fixed_update_total_time += cast(f64)ctx.game_time.fixed_target_time
 			}
@@ -179,4 +156,11 @@ load_image :: proc(path: string, desired_channels: i32 = 0) -> (image: Image, ok
 
 unload_image :: proc(image: Image) {
 	defer stb_image.image_free(image.data)
+}
+
+
+@(private = "file")
+_glfw_error_callback :: proc "c" (code: i32, description: cstring) {
+	context = g_err_ctx
+	log.errorf("glfw: %i: %s", code, description)
 }

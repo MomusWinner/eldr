@@ -104,6 +104,8 @@ _pipeline_manager_get_compute_pipeline :: proc(
 _pipeline_manager_hot_reload :: proc(pm: ^Pipeline_Manager, g: ^Graphics) {
 	assert(pm.enable_compilation)
 
+	vk.WaitForFences(g.vulkan_state.device, 1, &g.fence, true, max(u64))
+
 	log.debug("--- RELOADING SHADERS ---")
 	for &pipeline in pm.pipelines.values {
 		pipeline_info: ^Create_Pipeline_Info

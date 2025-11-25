@@ -1,27 +1,10 @@
 package main
 
-import "base:runtime"
-import "core:c"
-import "core:fmt"
 import "core:log"
-import "core:math/linalg/glsl"
-import "core:mem"
-import "core:slice"
-import "core:strings"
-import "core:time"
 import "eldr"
 import gfx "eldr/graphics"
-import "vendor:glfw"
-import vk "vendor:vulkan"
-
-g_ctx: runtime.Context
 
 vec3 :: [3]f32
-
-last_time: f64
-
-reload: bool = false
-
 current_scene: Scene
 
 main :: proc() {
@@ -49,13 +32,6 @@ main :: proc() {
 
 	context.logger = log.create_console_logger()
 	defer log.destroy_console_logger(context.logger)
-	g_ctx = context
-
-	key_handler :: proc "c" (window: glfw.WindowHandle, key, scancode, action, mods: c.int) {
-		if key == glfw.KEY_R {
-			reload = true
-		}
-	}
 
 	eldr.init(
 		nil,
@@ -65,11 +41,6 @@ main :: proc() {
 		destroy,
 		{gfx = {swapchain_sample_count = ._4}, window = {width = 800, height = 400, title = "VulkanTest"}},
 	)
-
-	glfw.SetKeyCallback(eldr.ctx.window, key_handler)
-	glfw.SetErrorCallback(glfw_error_callback)
-
-	g := eldr.ctx.gfx // TODO:
 
 	current_scene = create_room_scene()
 	// current_scene = create_text_scene()
@@ -88,14 +59,12 @@ fixed_update :: proc(user_data: rawptr) {
 }
 
 update :: proc(user_data: rawptr) {
-	g := eldr.ctx.gfx // TODO:
-	if (reload) {
-		vk.WaitForFences(g.vulkan_state.device, 1, &g.fence, true, max(u64))
+	if (eldr.is_key_pressed(.R)) {
+		g := eldr.ctx.gfx // TODO:
 		gfx.pipeline_hot_reload(g)
-		reload = false
 	}
 
-	current_scene.update(&current_scene) // TODO:
+	current_scene.update(&current_scene)
 }
 
 draw :: proc(user_data: rawptr) {
@@ -104,9 +73,4 @@ draw :: proc(user_data: rawptr) {
 
 destroy :: proc(user_data: rawptr) {
 	current_scene.destroy(&current_scene)
-}
-
-glfw_error_callback :: proc "c" (code: i32, description: cstring) {
-	context = g_ctx
-	log.errorf("glfw: %i: %s", code, description)
 }

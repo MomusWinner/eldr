@@ -63,7 +63,7 @@ draw_mesh :: proc(
 	pipeline, ok := get_graphics_pipeline(g, material.pipeline_h)
 	assert(ok, "Couldn't get pipeline")
 
-	_transform_apply(transform, g)
+	_trf_apply(transform, g)
 	_material_apply(material, g)
 
 	bind_pipeline(g, pipeline, frame_data, loc)

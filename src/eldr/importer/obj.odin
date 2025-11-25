@@ -12,10 +12,11 @@ import "core:strings"
 vec2 :: common.vec2
 vec3 :: common.vec3
 
-Vertex :: common.Vertex
+Vertex :: common.Vertex // TODO: use local Vertex
+
 
 @(private)
-_hash :: proc(a: int, b: int, c: int) -> u32 {
+_hash :: proc(a: int, b: int, c: int) -> u32 { 	// TODO: use odin hash
 	seed: u32 = 0x9747b28
 	multiplier: u32 = 0xcc9e2d51
 	rot2: u32 = 13
@@ -145,7 +146,7 @@ import_obj :: proc(path: string, allocator := context.allocator) -> ([]Mesh, boo
 }
 
 
-_info :: proc(vertices: []Vertex, indices: []u16) {
+_info :: proc(vertices: []Vertex, indices: []u16) { 	// TODO: fix
 	fmt.printfln("--------------------------------")
 	fmt.printfln("Vertices")
 	for i in 0 ..< len(vertices) {

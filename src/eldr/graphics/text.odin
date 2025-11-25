@@ -154,9 +154,9 @@ create_text :: proc(
 	assert_not_nil(font, loc)
 
 	transform := Transform{}
-	init_transform(g, &transform)
-	transform_set_position(&transform, start_position)
-	transform_set_scale(&transform, vec3{1, 1, 1} * size)
+	init_trf(g, &transform)
+	trf_set_position(&transform, start_position)
+	trf_set_scale(&transform, vec3{1, 1, 1} * size)
 
 	material := Material{}
 	init_material(g, &material, g.buildin.text_pipeline_h)
@@ -199,7 +199,7 @@ text_set_position :: proc(text: ^Text, g: ^Graphics, position: vec3, loc := #cal
 	assert_not_nil(text, loc)
 	assert_not_nil(g, loc)
 
-	transform_set_position(&text.transform, position)
+	trf_set_position(&text.transform, position)
 }
 
 draw_text :: proc(g: ^Graphics, text: ^Text, frame_data: Frame_Data, camera: ^Camera, loc := #caller_location) {
@@ -207,7 +207,7 @@ draw_text :: proc(g: ^Graphics, text: ^Text, frame_data: Frame_Data, camera: ^Ca
 	assert_not_nil(text, loc)
 
 	_material_apply(&text.material, g)
-	_transform_apply(&text.transform, g)
+	_trf_apply(&text.transform, g)
 
 	pipeline, ok := get_graphics_pipeline(g, text.material.pipeline_h)
 	assert(ok)
@@ -241,7 +241,7 @@ destroy_text :: proc(g: ^Graphics, text: ^Text, loc := #caller_location) {
 	assert_not_nil(text, loc)
 
 	destroy_buffer(&text.vbo, g.vulkan_state)
-	destroy_transform(g, &text.transform)
+	destroy_trf(g, &text.transform)
 	destroy_material(g, &text.material)
 }
 

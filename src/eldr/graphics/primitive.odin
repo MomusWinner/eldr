@@ -83,9 +83,9 @@ draw_square :: proc(g: ^Graphics, frame_data: Frame_Data, camera: ^Camera, posit
 	_material_apply(&model.materials[0], g)
 
 	transform := _temp_pool_acquire(g.temp_transform_pool)
-	transform_set_position(&transform, position)
-	transform_set_scale(&transform, scale)
-	_transform_apply(&transform, g)
+	trf_set_position(&transform, position)
+	trf_set_scale(&transform, scale)
+	_trf_apply(&transform, g)
 
 	draw_model(g, frame_data, model, camera, &transform)
 }

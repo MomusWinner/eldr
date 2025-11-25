@@ -74,7 +74,8 @@ room_scene_update :: proc(s: ^Scene) {
 	data := cast(^Room_Scene_Data)s.data
 	value += eldr.get_delta_time()
 	result := math.sin_f32(value)
-	data.transform.position.x = result * 2
+	dir := gfx.trf_get_right(&data.transform)
+	data.transform.position = dir * result
 	data.transform.dirty = true
 }
 
@@ -99,7 +100,9 @@ room_scene_draw :: proc(s: ^Scene) {
 	surface_frame := eldr.begin_surface(surface, frame)
 	{
 		eldr.draw_model(surface_frame, data.model, &data.camera, &data.transform)
-		eldr.draw_square(surface_frame, &data.camera, {0, 0, 0}, {1, 1, 1}, {1, 0, 0, 1})
+
+		forward := gfx.trf_get_forward(&data.transform)
+		eldr.draw_square(surface_frame, &data.camera, data.transform.position + forward * 0.3, 0.1, {1, 0, 0, 1})
 	}
 	eldr.end_surface(surface, surface_frame)
 

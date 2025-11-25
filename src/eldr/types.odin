@@ -2,6 +2,7 @@ package eldr
 
 import "common"
 import gfx "graphics"
+import "vendor:glfw"
 
 vec2 :: common.vec2
 vec3 :: common.vec3
@@ -53,3 +54,34 @@ Semaphore :: gfx.Semaphore
 Vertex_Input_Binding_Description :: gfx.Vertex_Input_Binding_Description
 Vertex_Input_Attribute_Description :: gfx.Vertex_Input_Attribute_Description
 Vertex_Input_Description :: gfx.Vertex_Input_Description
+
+game_event_proc :: proc(user_data: rawptr)
+
+Game_Time :: struct {
+	total_game_time:         f64,
+	delta_time:              f32,
+	target_time:             f32,
+	fixed_target_time:       f32,
+	previous_frame:          f64,
+	fixed_update_total_time: f64,
+}
+
+Eldr :: struct {
+	window:            glfw.WindowHandle,
+	gfx:               ^gfx.Graphics,
+	game_time:         Game_Time,
+	user_data:         rawptr,
+	fixed_update_proc: game_event_proc,
+	update_proc:       game_event_proc,
+	draw_proc:         game_event_proc,
+	destroy_proc:      game_event_proc,
+}
+
+Eldr_Info :: struct {
+	gfx:    Graphics_Init_Info,
+	window: struct {
+		title:  string,
+		width:  i32,
+		height: i32,
+	},
+}

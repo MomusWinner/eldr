@@ -76,7 +76,7 @@ RegisterUniform(Model, {
 #define getModel() GetResource(Model, PushConstants.model)
 
 RegisterUniform(Material, {
-    vec4 color;
+	vec4 color;
 	uint texture;
 	uint pad0;
 	uint pad1;

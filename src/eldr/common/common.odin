@@ -11,6 +11,7 @@ vec4 :: glsl.vec4
 color :: glsl.vec4
 ivec4 :: glsl.ivec4
 mat4 :: glsl.mat4
+quat :: glsl.quat
 
 Vertex :: struct {
 	position:  vec3,

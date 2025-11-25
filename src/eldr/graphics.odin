@@ -7,11 +7,10 @@ import "vendor:glfw"
 import vk "vendor:vulkan"
 
 @(private)
-_init_graphic :: proc(window: glfw.WindowHandle, gfx_init_info: Graphics_Init_Info) {
-	ctx.window = window
+_init_graphic :: proc(window: ^glfw.WindowHandle, gfx_init_info: Graphics_Init_Info) {
 	ctx.gfx = new(gfx.Graphics)
 	gfx.set_logger(context.logger)
-	gfx.init_graphic(ctx.gfx, gfx_init_info, &ctx.window)
+	gfx.init_graphic(ctx.gfx, gfx_init_info, window)
 }
 
 @(require_results)
@@ -29,7 +28,6 @@ screen_resized :: proc() -> bool {return gfx.screen_resized(ctx.gfx)}
 begin_render :: proc() -> Frame_Data {return gfx.begin_render(ctx.gfx)}
 end_render :: proc(frame_data: Frame_Data) {
 	gfx.end_render(ctx.gfx, frame_data, {})
-	glfw.PollEvents()
 }
 end_render_wait :: proc(frame_data: Frame_Data, sync_data: Sync_Data) {gfx.end_render(ctx.gfx, frame_data, sync_data)}
 @(require_results)
@@ -68,8 +66,8 @@ camera_set_zoom :: proc(camera: ^Camera, zoom: vec3, loc := #caller_location) {g
 
 // TRANSFORM
 
-init_transform :: proc(transfrom: ^Transform) {gfx.init_transform(ctx.gfx, transfrom)}
-transform_set_position :: proc(transfrom: ^Transform, pos: vec3) {gfx.transform_set_position(transfrom, pos)}
+init_transform :: proc(transfrom: ^Transform) {gfx.init_trf(ctx.gfx, transfrom)}
+transform_set_position :: proc(transfrom: ^Transform, pos: vec3) {gfx.trf_set_position(transfrom, pos)}
 
 // MATERIALS
 

@@ -74,14 +74,14 @@ _destroy_temp_material_pool :: proc(g: ^Graphics, pool: ^Temp_Material_Pool) {
 _init_temp_transform_pool :: proc(g: ^Graphics, pool: ^Temp_Transform_Pool, size: int, allocator := context) {
 	_init_temp_pool(pool, size)
 	for i in 0 ..< size {
-		init_transform(g, &pool.resources[i])
+		init_trf(g, &pool.resources[i])
 	}
 }
 
 @(private)
 _destroy_temp_transform_pool :: proc(g: ^Graphics, pool: ^Temp_Transform_Pool) {
 	for i in 0 ..< len(pool.resources) {
-		destroy_transform(g, &pool.resources[i])
+		destroy_trf(g, &pool.resources[i])
 	}
 	_destroy_temp_pool(pool)
 }
