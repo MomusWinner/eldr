@@ -11,8 +11,8 @@ import vk "vendor:vulkan"
 @(private)
 PIXEL_SIZE :: 0.002 // TODO:
 
-load_font :: proc(g: ^Graphics, create_info: Create_Font_Info, loc := #caller_location) -> Font {
-	assert_not_nil(g, loc)
+load_font :: proc(create_info: Create_Font_Info, loc := #caller_location) -> Font {
+	assert_gfx_ctx(loc)
 	assert(create_info.path != "", loc = loc)
 	assert(create_info.atlas_width > 0, loc = loc)
 	assert(create_info.atlas_height > 0, loc = loc)
@@ -119,7 +119,7 @@ load_font :: proc(g: ^Graphics, create_info: Create_Font_Info, loc := #caller_lo
 		pixel    = .R8,
 	}
 
-	texture_h := bindless_store_texture(g, create_texture(g, image, create_info.path, 1))
+	texture_h := bindless_store_texture(create_texture(image, create_info.path, 1))
 
 	return Font {
 		name = create_info.path,
@@ -132,8 +132,8 @@ load_font :: proc(g: ^Graphics, create_info: Create_Font_Info, loc := #caller_lo
 	}
 }
 
-unload_font :: proc(g: ^Graphics, font: ^Font, loc := #caller_location) {
-	assert_not_nil(g, loc)
+unload_font :: proc(font: ^Font, loc := #caller_location) {
+	assert_gfx_ctx(loc)
 	assert_not_nil(font, loc)
 
 	delete(font.packed_chars)
@@ -142,7 +142,6 @@ unload_font :: proc(g: ^Graphics, font: ^Font, loc := #caller_location) {
 }
 
 create_text :: proc(
-	g: ^Graphics,
 	font: ^Font,
 	text: string,
 	start_position: vec3,
@@ -150,16 +149,16 @@ create_text :: proc(
 	size: f32,
 	loc := #caller_location,
 ) -> Text {
-	assert_not_nil(g, loc)
+	assert_gfx_ctx(loc)
 	assert_not_nil(font, loc)
 
-	transform := Transform{}
-	init_trf(g, &transform)
-	trf_set_position(&transform, start_position)
-	trf_set_scale(&transform, vec3{1, 1, 1} * size)
+	trf := Gfx_Transform{}
+	init_gfx_trf(&trf)
+	common.trf_set_position(&trf, start_position)
+	common.trf_set_scale(&trf, vec3{1, 1, 1} * size)
 
 	material := Material{}
-	init_material(g, &material, g.buildin.text_pipeline_h)
+	init_material(&material, ctx.buildin.text_pipeline_h)
 	material.color = color
 	material.texture_h = font.texture_h
 
@@ -167,26 +166,26 @@ create_text :: proc(
 		text      = text,
 		font      = font,
 		material  = material,
-		transform = transform,
+		transform = trf,
 		size      = size,
 	}
 
-	vbo, vertices := _generate_text_mesh(g, &text)
+	vbo, vertices := _generate_text_mesh(&text)
 	text.vbo = vbo
 	text.vertices = vertices
 
 	return text
 }
 
-text_set_string :: proc(text: ^Text, g: ^Graphics, text_str: string, loc := #caller_location) {
+text_set_string :: proc(text: ^Text, text_str: string, loc := #caller_location) {
+	assert_gfx_ctx(loc)
 	assert_not_nil(text, loc)
-	assert_not_nil(g, loc)
 
 	text.text = text_str
-	_deffered_destructor_add(g, text.vbo)
+	_deffered_destructor_add(text.vbo)
 
 	text.last_vbo = text.vbo
-	text.vbo, _ = _generate_text_mesh(g, text, loc)
+	text.vbo, _ = _generate_text_mesh(text, loc)
 }
 
 text_set_color :: proc(text: ^Text, color: vec4, loc := #caller_location) {
@@ -195,31 +194,31 @@ text_set_color :: proc(text: ^Text, color: vec4, loc := #caller_location) {
 	material_set_color(&text.material, color)
 }
 
-text_set_position :: proc(text: ^Text, g: ^Graphics, position: vec3, loc := #caller_location) {
+text_set_position :: proc(text: ^Text, position: vec3, loc := #caller_location) {
+	assert_gfx_ctx(loc)
 	assert_not_nil(text, loc)
-	assert_not_nil(g, loc)
 
-	trf_set_position(&text.transform, position)
+	common.trf_set_position(&text.transform, position)
 }
 
-draw_text :: proc(g: ^Graphics, text: ^Text, frame_data: Frame_Data, camera: ^Camera, loc := #caller_location) {
-	assert_not_nil(g, loc)
+draw_text :: proc(text: ^Text, frame_data: Frame_Data, camera: ^Camera, loc := #caller_location) {
+	assert_gfx_ctx(loc)
 	assert_not_nil(text, loc)
 
-	_material_apply(&text.material, g)
-	_trf_apply(&text.transform, g)
+	_material_apply(&text.material)
+	_trf_apply(&text.transform)
 
-	pipeline, ok := get_graphics_pipeline(g, text.material.pipeline_h)
+	pipeline, ok := get_graphics_pipeline(text.material.pipeline_h)
 	assert(ok)
 
 	offset := vk.DeviceSize{}
 	vk.CmdBindVertexBuffers(frame_data.cmd, 0, 1, &text.vbo.buffer, &offset)
 
-	bind_pipeline(g, pipeline, frame_data)
-	bindless_bind(g, frame_data.cmd, pipeline.layout)
+	bind_pipeline(pipeline, frame_data)
+	bindless_bind(frame_data.cmd, pipeline.layout)
 
 	const := Push_Constant {
-		camera   = _camera_get_buffer(camera, g, get_screen_aspect(g)).index,
+		camera   = _camera_get_buffer(camera, get_screen_aspect()).index,
 		model    = text.transform.buffer_h.index,
 		material = text.material.buffer_h.index,
 	}
@@ -236,13 +235,13 @@ draw_text :: proc(g: ^Graphics, text: ^Text, frame_data: Frame_Data, camera: ^Ca
 	vk.CmdDraw(frame_data.cmd, cast(u32)len(text.vertices), 1, 0, 0)
 }
 
-destroy_text :: proc(g: ^Graphics, text: ^Text, loc := #caller_location) {
-	assert_not_nil(g, loc)
+destroy_text :: proc(text: ^Text, loc := #caller_location) {
+	assert_gfx_ctx(loc)
 	assert_not_nil(text, loc)
 
-	destroy_buffer(&text.vbo, g.vulkan_state)
-	destroy_trf(g, &text.transform)
-	destroy_material(g, &text.material)
+	destroy_buffer(&text.vbo)
+	destroy_trf(&text.transform)
+	destroy_material(&text.material)
 }
 
 @(private)
@@ -272,7 +271,7 @@ _text_shader_attribute :: proc() -> (Vertex_Input_Binding_Description, [2]Vertex
 }
 
 @(private)
-_text_default_pipeline :: proc(g: ^Graphics) -> Pipeline_Handle {
+_text_default_pipeline :: proc() -> Pipeline_Handle {
 	vert_bind, vert_attr := _text_shader_attribute()
 
 	set_infos := []Pipeline_Set_Info{create_bindless_pipeline_set_info(context.temp_allocator)}
@@ -307,7 +306,7 @@ _text_default_pipeline :: proc(g: ^Graphics) -> Pipeline_Handle {
 		stencil = {enable = true, front = {}, back = {}},
 	}
 
-	handle, ok := create_graphics_pipeline(g, &create_info)
+	handle, ok := create_graphics_pipeline(&create_info)
 	if !ok {
 		log.info("couldn't create text pipeline")
 	}
@@ -323,7 +322,7 @@ tt_must :: proc(status: i32, message: string = "Something went wrong with text r
 }
 
 @(private = "file")
-_generate_text_mesh :: proc(g: ^Graphics, text: ^Text, loc := #caller_location) -> (Buffer, []FontVertex) {
+_generate_text_mesh :: proc(text: ^Text, loc := #caller_location) -> (Buffer, []FontVertex) {
 	position := vec3{0, 0, 0}
 	vertices := make([]FontVertex, len(text.text) * 6, context.temp_allocator)
 	vertex_index := 0
@@ -401,7 +400,7 @@ _generate_text_mesh :: proc(g: ^Graphics, text: ^Text, loc := #caller_location) 
 	}
 
 	vertices_size := cast(vk.DeviceSize)(size_of(FontVertex) * len(vertices))
-	vertex_buffer := create_vertex_buffer(g.vulkan_state, raw_data(vertices), vertices_size)
+	vertex_buffer := create_vertex_buffer(raw_data(vertices), vertices_size)
 
 	return vertex_buffer, vertices
 }

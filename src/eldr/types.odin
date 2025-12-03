@@ -22,7 +22,7 @@ Camera :: gfx.Camera
 Texture :: gfx.Texture
 Texture_Handle :: gfx.Texture_Handle
 
-Transform :: gfx.Transform
+Gfx_Transform :: gfx.Gfx_Transform
 
 Material :: gfx.Material
 

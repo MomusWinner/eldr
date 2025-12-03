@@ -12,51 +12,43 @@ import "vma"
 
 @(require_results)
 create_surface :: proc(
-	g: ^Graphics,
-	sample_count: Sample_Count_Flag,
-	anisotropy: f32,
+	sample_count: Sample_Count_Flag = ._1,
+	anisotropy: f32 = 1,
 	allocator := context.allocator,
 	loc := #caller_location,
 ) -> Surface_Handle {
-	assert_not_nil(g, loc)
-	return _surface_manager_create_surface(g.surface_manager, g, sample_count, anisotropy, allocator)
+	return _surface_manager_create_surface(ctx.surface_manager, sample_count, anisotropy, allocator)
 }
 
-destroy_surface :: proc(g: ^Graphics, surface_h: Surface_Handle, loc := #caller_location) {
-	assert_not_nil(g, loc)
-	_surface_manager_destroy_surface(g.surface_manager, g, surface_h)
+destroy_surface :: proc(surface_h: Surface_Handle, loc := #caller_location) {
+	assert_gfx_ctx(loc)
+
+	_surface_manager_destroy_surface(ctx.surface_manager, surface_h, loc)
 }
 
 @(require_results)
-get_surface :: proc(g: ^Graphics, surface_h: Surface_Handle, loc := #caller_location) -> (^Surface, bool) {
-	assert_not_nil(g, loc)
-	return _surface_manager_get_surface(g.surface_manager, surface_h)
+get_surface :: proc(surface_h: Surface_Handle, loc := #caller_location) -> (^Surface, bool) {
+	assert_gfx_ctx(loc)
+
+	return _surface_manager_get_surface(ctx.surface_manager, surface_h, loc)
 }
 
 surface_add_color_attachment :: proc(
 	surface: ^Surface,
-	g: ^Graphics,
 	clear_value: color = {0.01, 0.01, 0.01, 1.0},
 	loc := #caller_location,
 ) {
-	assert_not_nil(g, loc)
+	assert_gfx_ctx(loc)
 	assert_not_nil(surface, loc)
 
-	width, height := get_screen_width(g), get_screen_height(g)
+	width, height := get_screen_width(), get_screen_height()
 
-	color_resource := _create_surface_color_resource(
-		g.vulkan_state,
-		width,
-		height,
-		g.swapchain.format.format,
-		surface.sample_count,
-	)
+	color_resource := _create_surface_color_resource(width, height, ctx.swapchain.format.format, surface.sample_count)
 	color_resolve_resource := _create_surface_color_resolve_resource(
-		g.vulkan_state,
 		width,
 		height,
 		surface.anisotropy,
-		g.swapchain.format.format,
+		ctx.swapchain.format.format,
 	)
 
 	color_attachment := Surface_Color_Attachment {
@@ -76,23 +68,17 @@ surface_add_color_attachment :: proc(
 	surface.color_attachment = color_attachment
 
 	color_attachment.resource = color_resource
-	color_attachment.resolve_handle = bindless_store_texture(g, color_resolve_resource)
+	color_attachment.resolve_handle = bindless_store_texture(color_resolve_resource)
 	surface.color_attachment = color_attachment
 }
 
-surface_add_depth_attachment :: proc(surface: ^Surface, g: ^Graphics, clear_value: f32 = 1, loc := #caller_location) {
+surface_add_depth_attachment :: proc(surface: ^Surface, clear_value: f32 = 1, loc := #caller_location) {
 	assert_not_nil(surface, loc)
 
-	sc := _cmd_single_begin(g.vulkan_state)
-	width, height := get_screen_width(g), get_screen_height(g)
-	depth_resource := _create_surface_depth_resource(
-		g.vulkan_state,
-		width,
-		height,
-		sc.command_buffer,
-		surface.sample_count,
-	)
-	_cmd_single_end(sc, g.vulkan_state)
+	sc := _cmd_single_begin()
+	width, height := get_screen_width(), get_screen_height()
+	depth_resource := _create_surface_depth_resource(width, height, sc.command_buffer, surface.sample_count)
+	_cmd_single_end(sc)
 
 	depth_attachment := Surface_Depth_Attachment {
 		resource = depth_resource,
@@ -127,7 +113,7 @@ begin_surface :: proc(surface: ^Surface, frame_data: Frame_Data, loc := #caller_
 	p_depth_attachment: ^vk.RenderingAttachmentInfo = nil
 
 	if has_color_attachment {
-		_transition_image_layout_from_cmd(
+		_transition_image_layout(
 			cmd,
 			color_attachment.resource.image,
 			{.COLOR},
@@ -172,7 +158,7 @@ end_surface :: proc(surface: ^Surface, frame_data: Frame_Data, loc := #caller_lo
 	color_attachment, has_color_attachment := surface.color_attachment.?
 
 	if has_color_attachment {
-		_transition_image_layout_from_cmd(
+		_transition_image_layout(
 			frame_data.cmd,
 			color_attachment.resource.image,
 			{.COLOR},
@@ -184,15 +170,9 @@ end_surface :: proc(surface: ^Surface, frame_data: Frame_Data, loc := #caller_lo
 	}
 }
 
-draw_surface :: proc(
-	surface: ^Surface,
-	g: ^Graphics,
-	frame_data: Frame_Data,
-	pipeline_h: Pipeline_Handle,
-	loc := #caller_location,
-) {
+draw_surface :: proc(surface: ^Surface, frame_data: Frame_Data, pipeline_h: Pipeline_Handle, loc := #caller_location) {
+	assert_gfx_ctx(loc)
 	assert_not_nil(surface, loc)
-	assert_not_nil(g, loc)
 
 	camera := Camera{} // FIX:
 	color_attachment, has_color := surface.color_attachment.?
@@ -200,19 +180,19 @@ draw_surface :: proc(
 
 	surface.model.materials[0].pipeline_h = pipeline_h
 	surface.model.materials[0].texture_h = color_attachment.resolve_handle
-	_material_apply(&surface.model.materials[0], g)
-	draw_model(g, frame_data, surface.model, &camera, &surface.transform, loc)
+	_material_apply(&surface.model.materials[0])
+	draw_model(frame_data, surface.model, &camera, &surface.transform, loc)
 }
 
-_init_surface_manager :: proc(g: ^Graphics) {
-	assert(g.surface_manager == nil)
-	g.surface_manager = new(Surface_Manager)
-	_surface_manager_init(g.surface_manager)
+_init_surface_manager :: proc() {
+	assert(ctx.surface_manager == nil)
+	ctx.surface_manager = new(Surface_Manager)
+	_surface_manager_init(ctx.surface_manager)
 }
 
-_destroy_surface_manager :: proc(g: ^Graphics) {
-	_surface_manager_destroy(g.surface_manager, g)
-	free(g.surface_manager)
+_destroy_surface_manager :: proc(loc := #caller_location) {
+	_surface_manager_destroy(ctx.surface_manager, loc)
+	free(ctx.surface_manager)
 }
 
 @(private = "file")
@@ -221,12 +201,12 @@ _surface_manager_init :: proc(sm: ^Surface_Manager, loc := #caller_location) {
 }
 
 @(private = "file")
-_surface_manager_destroy :: proc(sm: ^Surface_Manager, g: ^Graphics, loc := #caller_location) {
+_surface_manager_destroy :: proc(sm: ^Surface_Manager, loc := #caller_location) {
+	assert_gfx_ctx(loc)
 	assert_not_nil(sm, loc)
-	assert_not_nil(g, loc)
 
 	for &surface in sm.surfaces.values {
-		_surface_destroy(&surface, g)
+		_surface_destroy(&surface)
 	}
 
 	hm.destroy(&sm.surfaces)
@@ -236,17 +216,16 @@ _surface_manager_destroy :: proc(sm: ^Surface_Manager, g: ^Graphics, loc := #cal
 @(require_results)
 _surface_manager_create_surface :: proc(
 	sm: ^Surface_Manager,
-	g: ^Graphics,
 	sample_count: Sample_Count_Flag,
 	anisotropy: f32,
 	allocator := context.allocator,
 	loc := #caller_location,
 ) -> Surface_Handle {
+	assert_gfx_ctx(loc)
 	assert_not_nil(sm, loc)
-	assert_not_nil(g, loc)
 
 	surface := Surface{}
-	_surface_init(&surface, g, sample_count, anisotropy)
+	_surface_init(&surface, sample_count, anisotropy)
 
 	return hm.insert(&sm.surfaces, surface)
 }
@@ -267,53 +246,47 @@ _surface_manager_get_surface :: proc(
 }
 
 @(private)
-_surface_manager_destroy_surface :: proc(
-	sm: ^Surface_Manager,
-	g: ^Graphics,
-	surface_h: Surface_Handle,
-	loc := #caller_location,
-) {
+_surface_manager_destroy_surface :: proc(sm: ^Surface_Manager, surface_h: Surface_Handle, loc := #caller_location) {
+	assert_gfx_ctx(loc)
 	assert_not_nil(sm, loc)
-	assert_not_nil(g, loc)
 
 	surface, ok := hm.remove(&sm.surfaces, surface_h)
 
 	if ok {
-		_surface_destroy(&surface, g)
+		_surface_destroy(&surface)
 	}
 }
 
 @(private)
-_surface_manager_recreate_surfaces :: proc(sm: ^Surface_Manager, g: ^Graphics, loc := #caller_location) {
+_surface_manager_recreate_surfaces :: proc(sm: ^Surface_Manager, loc := #caller_location) {
+	assert_gfx_ctx(loc)
 	assert_not_nil(sm, loc)
-	assert_not_nil(g, loc)
 
 	for &surface in sm.surfaces.values {
-		surface_recreate(&surface, g)
+		surface_recreate(&surface)
 	}
 }
 
 @(private)
 _surface_init :: proc(
 	surface: ^Surface,
-	g: ^Graphics,
 	sample_count: Sample_Count_Flag,
 	anisotropy: f32,
 	allocator := context.allocator,
 	loc := #caller_location,
 ) {
 	assert_not_nil(surface, loc)
-	assert_not_nil(g, loc)
+	assert_gfx_ctx(loc)
 
 	surface.extent = {
-		width  = get_device_width(g),
-		height = get_device_height(g),
+		width  = get_device_width(),
+		height = get_device_height(),
 	}
 
 	material: Material
-	init_material(g, &material, {})
+	init_material(&material, {})
 
-	mesh := create_square_mesh(g, 1)
+	mesh := create_square_mesh(1)
 
 	meshes := make([]Mesh, 1)
 	meshes[0] = mesh
@@ -324,7 +297,7 @@ _surface_init :: proc(
 	mesh_material := make([dynamic]int, 1, allocator)
 	mesh_material[0] = 0
 
-	init_trf(g, &surface.transform)
+	init_gfx_trf(&surface.transform)
 
 	surface.model = create_model(meshes, materials, mesh_material)
 	surface.sample_count = sample_count
@@ -332,55 +305,53 @@ _surface_init :: proc(
 }
 
 @(private)
-_surface_destroy :: proc(surface: ^Surface, g: ^Graphics, loc := #caller_location) {
+_surface_destroy :: proc(surface: ^Surface, loc := #caller_location) {
+	assert_gfx_ctx(loc)
 	assert_not_nil(surface, loc)
-	assert_not_nil(g, loc)
 
-	destroy_model(g, &surface.model)
+	destroy_model(&surface.model)
 	color_attachment, has_color_attachment := surface.color_attachment.?
 	depth_attachment, has_depth_attachment := surface.depth_attachment.?
 
 	if has_color_attachment {
-		destroy_texture(g.vulkan_state, &color_attachment.resource)
+		destroy_texture(&color_attachment.resource)
 	}
 
 	if has_depth_attachment {
-		destroy_texture(g.vulkan_state, &depth_attachment.resource)
+		destroy_texture(&depth_attachment.resource)
 	}
 }
 
-surface_recreate :: proc(surface: ^Surface, g: ^Graphics, loc := #caller_location) {
-	must(vk.QueueWaitIdle(g.vulkan_state.graphics_queue))
+surface_recreate :: proc(surface: ^Surface, loc := #caller_location) {
+	must(vk.QueueWaitIdle(ctx.vulkan_state.graphics_queue))
 
-	surface.extent.width = get_screen_width(g)
-	surface.extent.height = get_screen_height(g)
+	surface.extent.width = get_screen_width()
+	surface.extent.height = get_screen_height()
 
 	color_attachment, has_color_attachment := surface.color_attachment.?
 	depth_attachment, has_depth_attachment := surface.depth_attachment.?
 
 	if has_color_attachment {
-		destroy_texture(g.vulkan_state, &color_attachment.resource)
-		bindless_destroy_texture(g, color_attachment.resolve_handle)
-		surface_add_color_attachment(surface, g)
+		destroy_texture(&color_attachment.resource)
+		bindless_destroy_texture(color_attachment.resolve_handle)
+		surface_add_color_attachment(surface)
 	}
 
 	if has_depth_attachment {
-		destroy_texture(g.vulkan_state, &depth_attachment.resource)
-		surface_add_depth_attachment(surface, g)
+		destroy_texture(&depth_attachment.resource)
+		surface_add_depth_attachment(surface)
 	}
 }
 
 @(private = "file")
 @(require_results)
 _create_surface_color_resource :: proc(
-	vks: Vulkan_State,
 	width, height: u32,
 	format: vk.Format,
 	sample_count: Sample_Count_Flag,
 	loc := #caller_location,
 ) -> Texture {
 	image, allocation, allocation_info := _create_image(
-		vks,
 		width,
 		height,
 		1,
@@ -392,7 +363,7 @@ _create_surface_color_resource :: proc(
 		vma.AllocationCreateFlags{},
 	)
 
-	view := _create_image_view(vks, image, format, {.COLOR}, 1)
+	view := _create_image_view(image, format, {.COLOR}, 1)
 
 	return Texture {
 		name = "surface color attachment",
@@ -407,14 +378,12 @@ _create_surface_color_resource :: proc(
 @(private = "file")
 @(require_results)
 _create_surface_color_resolve_resource :: proc(
-	vks: Vulkan_State,
 	width, height: u32,
 	sampler_anisotropy: f32,
 	format: vk.Format,
 	loc := #caller_location,
 ) -> Texture {
 	image, allocation, allocation_info := _create_image(
-		vks,
 		width,
 		height,
 		1,
@@ -426,7 +395,7 @@ _create_surface_color_resolve_resource :: proc(
 		vma.AllocationCreateFlags{},
 	)
 
-	view := _create_image_view(vks, image, format, {.COLOR}, 1)
+	view := _create_image_view(image, format, {.COLOR}, 1)
 
 	sampler_info := vk.SamplerCreateInfo {
 		sType                   = .SAMPLER_CREATE_INFO,
@@ -448,7 +417,7 @@ _create_surface_color_resolve_resource :: proc(
 	}
 
 	sampler: vk.Sampler
-	must(vk.CreateSampler(vks.device, &sampler_info, nil, &sampler))
+	must(vk.CreateSampler(ctx.vulkan_state.device, &sampler_info, nil, &sampler))
 
 	return Texture {
 		name = "surface resolve color attachment",
@@ -464,16 +433,14 @@ _create_surface_color_resolve_resource :: proc(
 @(private = "file")
 @(require_results)
 _create_surface_depth_resource :: proc(
-	vks: Vulkan_State,
 	width: u32,
 	height: u32,
 	cmd: Command_Buffer,
 	sample_count: Sample_Count_Flag,
 	loc := #caller_location,
 ) -> Texture {
-	format := _find_depth_format(vks.physical_device)
+	format := _find_depth_format(ctx.vulkan_state.physical_device)
 	image, allocation, allocation_info := _create_image(
-		vks,
 		width,
 		height,
 		1,
@@ -486,7 +453,7 @@ _create_surface_depth_resource :: proc(
 	)
 
 	_transition_image_layout(cmd, image, {.DEPTH}, format, .UNDEFINED, .DEPTH_STENCIL_ATTACHMENT_OPTIMAL, 1)
-	view := _create_image_view(vks, image, format, {.DEPTH}, 1)
+	view := _create_image_view(image, format, {.DEPTH}, 1)
 
 	return Texture {
 		name = "surface depth attachment",

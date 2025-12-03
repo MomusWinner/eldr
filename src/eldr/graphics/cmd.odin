@@ -9,16 +9,16 @@ SingleCommand :: struct {
 
 @(private)
 @(require_results)
-_cmd_single_begin :: proc(vks: Vulkan_State) -> SingleCommand {
+_cmd_single_begin :: proc() -> SingleCommand {
 	alloc_info := vk.CommandBufferAllocateInfo {
 		sType              = .COMMAND_BUFFER_ALLOCATE_INFO,
 		level              = .PRIMARY,
-		commandPool        = vks.command_pool,
+		commandPool        = ctx.vulkan_state.command_pool,
 		commandBufferCount = 1,
 	}
 
 	command_buffer: vk.CommandBuffer
-	must(vk.AllocateCommandBuffers(vks.device, &alloc_info, &command_buffer))
+	must(vk.AllocateCommandBuffers(ctx.vulkan_state.device, &alloc_info, &command_buffer))
 
 	begin_info := vk.CommandBufferBeginInfo {
 		sType = .COMMAND_BUFFER_BEGIN_INFO,
@@ -30,7 +30,7 @@ _cmd_single_begin :: proc(vks: Vulkan_State) -> SingleCommand {
 }
 
 @(private)
-_cmd_single_end :: proc(single_command: SingleCommand, vks: Vulkan_State) {
+_cmd_single_end :: proc(single_command: SingleCommand) {
 	command_buffer := single_command.command_buffer
 
 	must(vk.EndCommandBuffer(command_buffer))
@@ -41,10 +41,10 @@ _cmd_single_end :: proc(single_command: SingleCommand, vks: Vulkan_State) {
 		pCommandBuffers    = &command_buffer,
 	}
 
-	must(vk.QueueSubmit(vks.graphics_queue, 1, &submit_info, 0))
-	must(vk.QueueWaitIdle(vks.graphics_queue))
+	must(vk.QueueSubmit(ctx.vulkan_state.graphics_queue, 1, &submit_info, 0))
+	must(vk.QueueWaitIdle(ctx.vulkan_state.graphics_queue))
 
-	vk.FreeCommandBuffers(vks.device, vks.command_pool, 1, &command_buffer)
+	vk.FreeCommandBuffers(ctx.vulkan_state.device, ctx.vulkan_state.command_pool, 1, &command_buffer)
 }
 
 @(private)

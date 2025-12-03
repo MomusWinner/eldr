@@ -1,0 +1,46 @@
+package common
+
+import "core:math/linalg/glsl"
+
+Transform :: struct {
+	// model:    mat4,
+	position: vec3,
+	rotation: quat,
+	scale:    vec3,
+	dirty:    bool,
+}
+
+init_trf :: proc(trf: ^Transform, loc := #caller_location) {
+	assert_not_nil(trf, loc)
+
+	trf.scale = 1
+	trf.position = 0
+	// trf.rotation = glsl.quatAxisAngle({0, 0, 1}, 0)
+	trf.dirty = true
+}
+
+trf_set_position :: proc(trf: ^Transform, position: vec3, loc := #caller_location) {
+	assert_not_nil(trf, loc)
+
+	trf.position = position
+	trf.dirty = true
+}
+
+trf_set_scale :: proc(trf: ^Transform, scale: vec3, loc := #caller_location) {
+	assert_not_nil(trf, loc)
+
+	trf.scale = scale
+	trf.dirty = true
+}
+
+trf_get_forward :: proc(trf: ^Transform) -> vec3 {
+	return glsl.quatMulVec3(trf.rotation, {0, 0, 1})
+}
+
+trf_get_up :: proc(trf: ^Transform) -> vec3 {
+	return glsl.quatMulVec3(trf.rotation, {0, 1, 0})
+}
+
+trf_get_right :: proc(trf: ^Transform) -> vec3 {
+	return glsl.quatMulVec3(trf.rotation, {1, 0, 0})
+}

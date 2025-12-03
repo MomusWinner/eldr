@@ -2,12 +2,12 @@ package graphics
 
 import "core:math/linalg/glsl"
 
-init_material :: proc(g: ^Graphics, material: ^Material, pipeline_h: Pipeline_Handle, loc := #caller_location) {
-	assert_not_nil(g, loc)
+init_material :: proc(material: ^Material, pipeline_h: Pipeline_Handle, loc := #caller_location) {
+	assert_gfx_ctx(loc)
 	assert_not_nil(material, loc)
 
-	buffer := create_uniform_buffer(g.vulkan_state, size_of(Material_UBO))
-	material.buffer_h = bindless_store_buffer(g, buffer)
+	buffer := create_uniform_buffer(size_of(Material_UBO))
+	material.buffer_h = bindless_store_buffer(buffer)
 	material.pipeline_h = pipeline_h
 	material.color = {1, 1, 1, 1}
 	material.dirty = true
@@ -35,8 +35,8 @@ material_set_pipeline :: proc(material: ^Material, pipeline_h: Pipeline_Handle, 
 }
 
 @(private)
-_material_apply :: proc(material: ^Material, g: ^Graphics, loc := #caller_location) {
-	assert_not_nil(g, loc)
+_material_apply :: proc(material: ^Material, loc := #caller_location) {
+	assert_gfx_ctx(loc)
 	assert_not_nil(material, loc)
 
 	if !material.dirty {
@@ -52,14 +52,14 @@ _material_apply :: proc(material: ^Material, g: ^Graphics, loc := #caller_locati
 		color   = material.color,
 		texture = texture_index,
 	}
-	buffer := bindless_get_buffer(g, material.buffer_h)
-	_fill_buffer(buffer, g.vulkan_state, size_of(Material_UBO), &ubo)
+	buffer := bindless_get_buffer(material.buffer_h, loc)
+	_fill_buffer(buffer, size_of(Material_UBO), &ubo)
 	material.dirty = false
 }
 
-destroy_material :: proc(g: ^Graphics, material: ^Material, loc := #caller_location) {
-	assert_not_nil(g, loc)
+destroy_material :: proc(material: ^Material, loc := #caller_location) {
+	assert_gfx_ctx(loc)
 	assert_not_nil(material, loc)
 
-	bindless_destroy_buffer(g, material.buffer_h)
+	bindless_destroy_buffer(material.buffer_h, loc)
 }

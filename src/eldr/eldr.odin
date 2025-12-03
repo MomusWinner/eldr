@@ -106,7 +106,7 @@ run :: proc() {
 		}
 	}
 
-	gfx.wait_render_completion(ctx.gfx)
+	gfx.wait_render_completion()
 
 	ctx.destroy_proc(ctx.user_data)
 
@@ -119,7 +119,7 @@ close :: proc() {
 
 @(private)
 _destroy :: proc() {
-	gfx.destroy_graphic(ctx.gfx)
+	gfx.destroy()
 	glfw.DestroyWindow(ctx.window)
 	glfw.Terminate()
 }

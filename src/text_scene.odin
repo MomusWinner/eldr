@@ -8,8 +8,7 @@ import "core:math/linalg/glsl"
 import "core:math/rand"
 import "core:strings"
 import "eldr"
-import "vendor:glfw"
-import vk "vendor:vulkan"
+import gfx "eldr/graphics"
 
 Text_Scene_Data :: struct {
 	font:        eldr.Font,
@@ -31,13 +30,13 @@ create_text_scene :: proc() -> Scene {
 text_scene_init :: proc(s: ^Scene) {
 	data := new(Text_Scene_Data)
 
-	eldr.camera_init(&data.camera)
+	gfx.camera_init(&data.camera)
 	data.camera.position = {0, 0, 2}
 	data.camera.target = {0, 0, 0}
 	data.camera.up = {0, 1, 0}
 	data.camera.dirty = true
 
-	data.font = eldr.load_font(
+	data.font = gfx.load_font(
 		eldr.Create_Font_Info {
 			path = "assets/buildin/fonts/RobotoMono.ttf",
 			size = 128,
@@ -49,12 +48,12 @@ text_scene_init :: proc(s: ^Scene) {
 		},
 	)
 
-	data.text = eldr.create_text(
+	data.text = gfx.create_text(
 		&data.font,
 		"По берегу мы шли. Кипел поток,\nГде выли тени злы, полубиты,\nПоверженны в кровавый кипяток.",
 		vec3{-0.5, 0, 0},
+		vec4{0, 0.5, 0, 1},
 		0.5,
-		eldr.vec4{0, 0.5, 0, 1},
 	)
 
 	strings.builder_init_len(&data.builder, len(data.text.text))
@@ -72,7 +71,7 @@ text_scene_update :: proc(s: ^Scene) {
 	data := cast(^Text_Scene_Data)s.data
 	value += eldr.get_delta_time() * 5
 	result := (math.sin_f32(value) + 1) / 2
-	eldr.text_set_color(&data.text, eldr.color{1, result, 1, 1})
+	gfx.text_set_color(&data.text, eldr.color{1, result, 1, 1})
 
 
 	elapsed_time += cast(f64)eldr.get_delta_time()
@@ -80,37 +79,37 @@ text_scene_update :: proc(s: ^Scene) {
 		elapsed_time = 0
 		strings.write_string(&data.builder, "\n... ")
 		str := strings.to_string(data.builder)
-		eldr.text_set_string(&data.text, str)
+		gfx.text_set_string(&data.text, str)
 	}
 }
 
 text_scene_draw :: proc(s: ^Scene) {
 	data := cast(^Text_Scene_Data)s.data
 
-	frame := eldr.begin_render()
+	frame := gfx.begin_render()
 
 	// Begin gfx.
 	// --------------------------------------------------------------------------------------------------------------------
 
-	eldr.set_full_viewport_scissor(frame)
+	gfx.set_full_viewport_scissor(frame)
 
-	base_frame := eldr.begin_draw(frame)
+	base_frame := gfx.begin_draw(frame)
 
-	eldr.draw_text(&data.text, base_frame, &data.camera)
+	gfx.draw_text(&data.text, base_frame, &data.camera)
 
-	eldr.end_draw(frame)
+	gfx.end_draw(frame)
 
 	// --------------------------------------------------------------------------------------------------------------------
 	// End gfx.
-	eldr.end_render(frame)
+	gfx.end_render(frame)
 }
 
 text_scene_destroy :: proc(s: ^Scene) {
 	data := cast(^Text_Scene_Data)s.data
 
 	strings.builder_destroy(&data.builder)
-	eldr.destroy_text(&data.text)
-	eldr.unload_font(&data.font)
+	gfx.destroy_text(&data.text)
+	gfx.unload_font(&data.font)
 
 	free(data)
 }

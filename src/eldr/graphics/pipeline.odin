@@ -11,26 +11,25 @@ import vk "vendor:vulkan"
 
 @(require_results)
 create_graphics_pipeline :: proc(
-	g: ^Graphics,
 	create_pipeline_info: ^Create_Pipeline_Info,
 	loc := #caller_location,
 ) -> (
 	Pipeline_Handle,
 	bool,
 ) {
-	pipeline, ok := _create_graphics_pipeline(g, create_pipeline_info, loc = loc)
+	pipeline, ok := _create_graphics_pipeline(create_pipeline_info, loc = loc)
 	if !ok {
 		log.errorf("couldn't load pipeline", location = loc)
 		return {}, false
 	}
 
-	handle := _pipeline_manager_registe_graphics_pipeline(g.pipeline_manager, pipeline)
+	handle := _pipeline_manager_registe_graphics_pipeline(ctx.pipeline_manager, pipeline)
 
 	return handle, true
 }
 
-destroy_graphics_pipeline :: proc(vks: Vulkan_State, pipeline: ^Graphics_Pipeline) {
-	_destroy_pipline(vks, pipeline)
+destroy_graphics_pipeline :: proc(pipeline: ^Graphics_Pipeline) {
+	_destroy_pipline(pipeline)
 	_destroy_create_graphics_pipeline_info(pipeline.create_info)
 }
 
@@ -53,12 +52,12 @@ create_compute_pipeline :: proc(
 	return handle, true
 }
 
-destroy_compute_pipeline :: proc(vks: Vulkan_State, pipeline: ^Compute_Pipeline) {
-	_destroy_pipline(vks, pipeline)
+destroy_compute_pipeline :: proc(pipeline: ^Compute_Pipeline) {
+	_destroy_pipline(pipeline)
 	_destroy_create_compute_pipeline_info(pipeline.create_info)
 }
 
-bind_pipeline :: proc(g: ^Graphics, pipeline: Pipeline_Ptr, frame_data: Frame_Data, loc := #caller_location) {
+bind_pipeline :: proc(pipeline: Pipeline_Ptr, frame_data: Frame_Data, loc := #caller_location) {
 	assert_frame_data(frame_data, loc)
 
 	switch p in pipeline {
@@ -79,40 +78,39 @@ bind_pipeline :: proc(g: ^Graphics, pipeline: Pipeline_Ptr, frame_data: Frame_Da
 	}
 }
 
-bind_descriptor_set :: proc(g: ^Graphics, pipeline: ^Pipeline, descriptor_set: [^]vk.DescriptorSet) {
-	vk.CmdBindDescriptorSets(g.cmd, .GRAPHICS, pipeline.layout, 0, 1, descriptor_set, 0, nil)
+bind_descriptor_set :: proc(pipeline: ^Pipeline, descriptor_set: [^]vk.DescriptorSet) {
+	vk.CmdBindDescriptorSets(ctx.cmd, .GRAPHICS, pipeline.layout, 0, 1, descriptor_set, 0, nil)
 }
 
 @(require_results)
 create_descriptor_set :: proc(
-	vks: Vulkan_State,
 	pipeline: ^Pipeline,
 	set_info: Pipeline_Set_Info,
 	resources: []Pipeline_Resource,
 ) -> vk.DescriptorSet {
-	return _create_descriptor_set(vks, pipeline, set_info, resources)
+	return _create_descriptor_set(pipeline, set_info, resources)
 }
 
 @(private)
-_reload_graphics_pipeline :: proc(g: ^Graphics, pipeline: ^Graphics_Pipeline) {
-	vk.DestroyPipeline(g.vulkan_state.device, pipeline.pipeline, nil)
+_reload_graphics_pipeline :: proc(pipeline: ^Graphics_Pipeline) {
+	vk.DestroyPipeline(ctx.vulkan_state.device, pipeline.pipeline, nil)
 
 	create_info := pipeline.create_info
 
-	shader_stages, ok := _create_shader_stages(g.vulkan_state, g.pipeline_manager, create_info, true)
+	shader_stages, ok := _create_shader_stages(create_info, true)
 	if !ok {
 		return
 	}
-	defer _destroy_shader_stages(g.vulkan_state.device, shader_stages)
+	defer _destroy_shader_stages(shader_stages)
 
-	depth_format := _find_depth_format(g.vulkan_state.physical_device)
+	depth_format := _find_depth_format(ctx.vulkan_state.physical_device)
 
 	pipeline_rendering_info := vk.PipelineRenderingCreateInfo {
 		sType                   = .PIPELINE_RENDERING_CREATE_INFO,
 		// stencilAttachmentFormat = depth_format,
 		depthAttachmentFormat   = depth_format,
 		colorAttachmentCount    = 1,
-		pColorAttachmentFormats = &g.swapchain.format.format,
+		pColorAttachmentFormats = &ctx.swapchain.format.format,
 	}
 
 	pipeline_info := vk.GraphicsPipelineCreateInfo {
@@ -124,7 +122,7 @@ _reload_graphics_pipeline :: proc(g: ^Graphics, pipeline: ^Graphics_Pipeline) {
 		pInputAssemblyState = _create_input_assembly_info(create_info),
 		pViewportState      = _create_viewport_info(create_info),
 		pRasterizationState = _create_rasterizer(create_info),
-		pMultisampleState   = _create_multisampling_info(g, create_info),
+		pMultisampleState   = _create_multisampling_info(create_info),
 		pColorBlendState    = _create_color_blend_info(create_info),
 		pDynamicState       = _create_dynamic_info(create_info),
 		pDepthStencilState  = _create_depth_stencil_info(create_info),
@@ -133,11 +131,11 @@ _reload_graphics_pipeline :: proc(g: ^Graphics, pipeline: ^Graphics_Pipeline) {
 		basePipelineIndex   = -1,
 	}
 
-	must(vk.CreateGraphicsPipelines(g.vulkan_state.device, 0, 1, &pipeline_info, nil, &pipeline.pipeline))
+	must(vk.CreateGraphicsPipelines(ctx.vulkan_state.device, 0, 1, &pipeline_info, nil, &pipeline.pipeline))
 }
 
 @(private)
-_create_descriptor_pool :: proc(vks: ^Vulkan_State) {
+_create_descriptor_pool :: proc() {
 	pool_sizes := [?]vk.DescriptorPoolSize {
 		vk.DescriptorPoolSize{type = .UNIFORM_BUFFER, descriptorCount = UNIFORM_DESCRIPTOR_MAX},
 		vk.DescriptorPoolSize{type = .UNIFORM_BUFFER_DYNAMIC, descriptorCount = UNIFORM_DESCRIPTOR_DYNAMIC_MAX},
@@ -153,18 +151,20 @@ _create_descriptor_pool :: proc(vks: ^Vulkan_State) {
 		maxSets       = DESCRIPTOR_SET_MAX,
 	}
 
-	must(vk.CreateDescriptorPool(vks.device, &poolInfo, nil, &vks.descriptor_pool), "failed to create descriptor pool!")
+	must(
+		vk.CreateDescriptorPool(ctx.vulkan_state.device, &poolInfo, nil, &ctx.vulkan_state.descriptor_pool),
+		"failed to create descriptor pool!",
+	)
 }
 
 @(private)
-_destroy_descriptor_pool :: proc(vks: ^Vulkan_State) {
-	vk.DestroyDescriptorPool(vks.device, vks.descriptor_pool, nil)
+_destroy_descriptor_pool :: proc() {
+	vk.DestroyDescriptorPool(ctx.vulkan_state.device, ctx.vulkan_state.descriptor_pool, nil)
 }
 
 @(private)
 @(require_results)
 _create_descriptor_set :: proc(
-	vks: Vulkan_State,
 	pipeline: ^Pipeline,
 	set_info: Pipeline_Set_Info,
 	resources: []Pipeline_Resource,
@@ -173,13 +173,16 @@ _create_descriptor_set :: proc(
 
 	alloc_info := vk.DescriptorSetAllocateInfo {
 		sType              = .DESCRIPTOR_SET_ALLOCATE_INFO,
-		descriptorPool     = vks.descriptor_pool,
+		descriptorPool     = ctx.vulkan_state.descriptor_pool,
 		descriptorSetCount = 1,
 		pSetLayouts        = &pipeline.descriptor_set_layouts[set_info.set],
 	}
 
 	descriptor_set: vk.DescriptorSet
-	must(vk.AllocateDescriptorSets(vks.device, &alloc_info, &descriptor_set), "failed to allocate descriptor sets!")
+	must(
+		vk.AllocateDescriptorSets(ctx.vulkan_state.device, &alloc_info, &descriptor_set),
+		"failed to allocate descriptor sets!",
+	)
 
 	assert(len(set_info.binding_infos) == len(resources))
 
@@ -221,7 +224,13 @@ _create_descriptor_set :: proc(
 		}
 	}
 
-	vk.UpdateDescriptorSets(vks.device, cast(u32)len(write_descriptor_sets), raw_data(write_descriptor_sets), 0, nil)
+	vk.UpdateDescriptorSets(
+		ctx.vulkan_state.device,
+		cast(u32)len(write_descriptor_sets),
+		raw_data(write_descriptor_sets),
+		0,
+		nil,
+	)
 
 	return descriptor_set
 }
@@ -229,7 +238,6 @@ _create_descriptor_set :: proc(
 @(private = "file")
 @(require_results)
 _create_graphics_pipeline :: proc(
-	g: ^Graphics,
 	create_info: ^Create_Pipeline_Info,
 	allocator := context.allocator,
 	loc := #caller_location,
@@ -239,24 +247,24 @@ _create_graphics_pipeline :: proc(
 ) {
 	create_info := _copy_create_graphics_pipeline_info(create_info)
 
-	shader_stages, ok := _create_shader_stages(g.vulkan_state, g.pipeline_manager, create_info, DEBUG, loc = loc)
+	shader_stages, ok := _create_shader_stages(create_info, DEBUG, loc = loc)
 	if !ok {
 		return {}, false
 	}
-	defer _destroy_shader_stages(g.vulkan_state.device, shader_stages)
+	defer _destroy_shader_stages(shader_stages)
 
-	descriptor_set_layouts := _set_infos_to_descriptor_set_layouts(g, create_info.set_infos, allocator)
+	descriptor_set_layouts := _set_infos_to_descriptor_set_layouts(create_info.set_infos, allocator)
 
-	pipeline_layout := _create_pipeline_layout(g, descriptor_set_layouts, create_info.push_constants)
+	pipeline_layout := _create_pipeline_layout(descriptor_set_layouts, create_info.push_constants)
 
-	depth_format := _find_depth_format(g.vulkan_state.physical_device)
+	depth_format := _find_depth_format(ctx.vulkan_state.physical_device)
 
 	pipeline_rendering_info := vk.PipelineRenderingCreateInfo {
 		sType                   = .PIPELINE_RENDERING_CREATE_INFO,
 		// stencilAttachmentFormat = depth_format,
 		depthAttachmentFormat   = depth_format,
 		colorAttachmentCount    = 1,
-		pColorAttachmentFormats = &g.swapchain.format.format,
+		pColorAttachmentFormats = &ctx.swapchain.format.format,
 	}
 
 	pipeline_info := vk.GraphicsPipelineCreateInfo {
@@ -268,7 +276,7 @@ _create_graphics_pipeline :: proc(
 		pInputAssemblyState = _create_input_assembly_info(create_info),
 		pViewportState      = _create_viewport_info(create_info),
 		pRasterizationState = _create_rasterizer(create_info),
-		pMultisampleState   = _create_multisampling_info(g, create_info),
+		pMultisampleState   = _create_multisampling_info(create_info),
 		pColorBlendState    = _create_color_blend_info(create_info),
 		pDynamicState       = _create_dynamic_info(create_info),
 		pDepthStencilState  = _create_depth_stencil_info(create_info),
@@ -279,7 +287,7 @@ _create_graphics_pipeline :: proc(
 
 	vk_pipeline := vk.Pipeline{}
 
-	must(vk.CreateGraphicsPipelines(g.vulkan_state.device, 0, 1, &pipeline_info, nil, &vk_pipeline))
+	must(vk.CreateGraphicsPipelines(ctx.vulkan_state.device, 0, 1, &pipeline_info, nil, &vk_pipeline))
 
 	pipeline := Graphics_Pipeline {
 		pipeline               = vk_pipeline,
@@ -304,7 +312,7 @@ _create_compute_pipeline :: proc(
 	create_info := create_info
 	pipeline_info := _copy_create_compute_pipeline_info(create_info, allocator)
 
-	module, ok := _create_shader_module(g.vulkan_state, g.pipeline_manager, pipeline_info.shader_path)
+	module, ok := _create_shader_module(pipeline_info.shader_path)
 	if !ok {
 		log.error("couldn't find comp shader. ", pipeline_info.shader_path)
 		return {}, false
@@ -317,8 +325,8 @@ _create_compute_pipeline :: proc(
 		pName  = "main",
 	}
 
-	descriptor_set_layouts := _set_infos_to_descriptor_set_layouts(g, pipeline_info.set_infos)
-	pipeline_layout := _create_pipeline_layout(g, descriptor_set_layouts)
+	descriptor_set_layouts := _set_infos_to_descriptor_set_layouts(pipeline_info.set_infos)
+	pipeline_layout := _create_pipeline_layout(descriptor_set_layouts)
 
 	vk_create_info := vk.ComputePipelineCreateInfo {
 		sType  = .COMPUTE_PIPELINE_CREATE_INFO,
@@ -341,12 +349,12 @@ _create_compute_pipeline :: proc(
 }
 
 @(private = "file")
-_destroy_pipline :: proc(vks: Vulkan_State, pipeline: ^Pipeline) {
-	vk.DestroyPipelineLayout(vks.device, pipeline.layout, nil)
-	vk.DestroyPipeline(vks.device, pipeline.pipeline, nil)
+_destroy_pipline :: proc(pipeline: ^Pipeline) {
+	vk.DestroyPipelineLayout(ctx.vulkan_state.device, pipeline.layout, nil)
+	vk.DestroyPipeline(ctx.vulkan_state.device, pipeline.pipeline, nil)
 
 	for layout in pipeline.descriptor_set_layouts {
-		_destroy_descriptor_set_layout(vks, layout)
+		_destroy_descriptor_set_layout(layout)
 	}
 	delete(pipeline.descriptor_set_layouts)
 }
@@ -441,13 +449,12 @@ _destroy_create_compute_pipeline_info :: proc(info: ^Create_Compute_Pipeline_Inf
 @(private = "file")
 @(require_results)
 _set_infos_to_descriptor_set_layouts :: proc(
-	g: ^Graphics,
 	set_infos: []Pipeline_Set_Info,
 	allocator := context.allocator,
 ) -> []vk.DescriptorSetLayout {
 	descriptor_set_layouts := make([]vk.DescriptorSetLayout, len(set_infos))
 	for &set_info, i in set_infos {
-		descriptor_set_layouts[i] = _set_info_to_descriptor_set_layout(g.vulkan_state, &set_info)
+		descriptor_set_layouts[i] = _set_info_to_descriptor_set_layout(&set_info)
 	}
 
 	return descriptor_set_layouts
@@ -455,7 +462,7 @@ _set_infos_to_descriptor_set_layouts :: proc(
 
 @(private = "file")
 @(require_results)
-_set_info_to_descriptor_set_layout :: proc(vks: Vulkan_State, set_info: ^Pipeline_Set_Info) -> vk.DescriptorSetLayout {
+_set_info_to_descriptor_set_layout :: proc(set_info: ^Pipeline_Set_Info) -> vk.DescriptorSetLayout {
 	descriptor_bindings := make([]vk.DescriptorSetLayoutBinding, len(set_info.binding_infos), context.temp_allocator)
 
 	for &binding, i in set_info.binding_infos {
@@ -491,7 +498,7 @@ _set_info_to_descriptor_set_layout :: proc(vks: Vulkan_State, set_info: ^Pipelin
 	}
 
 	must(
-		vk.CreateDescriptorSetLayout(vks.device, &layout_info, nil, &descriptor_set_layout),
+		vk.CreateDescriptorSetLayout(ctx.vulkan_state.device, &layout_info, nil, &descriptor_set_layout),
 		"failed to create descriptor set layout!",
 	)
 
@@ -499,8 +506,8 @@ _set_info_to_descriptor_set_layout :: proc(vks: Vulkan_State, set_info: ^Pipelin
 }
 
 @(private = "file")
-_destroy_descriptor_set_layout :: proc(vks: Vulkan_State, descriptor_set_layout: vk.DescriptorSetLayout) {
-	vk.DestroyDescriptorSetLayout(vks.device, descriptor_set_layout, nil)
+_destroy_descriptor_set_layout :: proc(descriptor_set_layout: vk.DescriptorSetLayout) {
+	vk.DestroyDescriptorSetLayout(ctx.vulkan_state.device, descriptor_set_layout, nil)
 }
 
 @(private = "file")
@@ -513,8 +520,6 @@ _create_shader_module :: proc {
 @(private = "file")
 @(require_results)
 _create_shader_module_from_file :: proc(
-	vks: Vulkan_State,
-	pm: ^Pipeline_Manager,
 	path: string,
 	compile: bool = false,
 	loc := #caller_location,
@@ -526,12 +531,12 @@ _create_shader_module_from_file :: proc(
 
 	if compile {
 		when DEBUG {
-			data, w_ok := _shader_compile_and_write(pm, source_path, loc)
+			data, w_ok := _shader_compile_and_write(ctx.pipeline_manager, source_path, loc)
 			if !w_ok {
 				log.panic("Couldn't write compiled shader ", path)
 			}
 
-			return _create_shader_module_from_memory(vks, data), w_ok
+			return _create_shader_module_from_memory(data), w_ok
 		} else {
 			log.panic("couldn't compile shader on release mode")
 		}
@@ -540,7 +545,7 @@ _create_shader_module_from_file :: proc(
 
 	if !success {
 		when DEBUG {
-			data = _shader_compile(pm, source_path, loc)
+			data = _shader_compile(ctx.pipeline_manager, source_path, loc)
 			success := common.wirte_file(path, data)
 			if !success {
 				log.panic("Couldn't write compiled shader ", path)
@@ -550,12 +555,12 @@ _create_shader_module_from_file :: proc(
 		}
 	}
 
-	return _create_shader_module_from_memory(vks, data), success
+	return _create_shader_module_from_memory(data), success
 }
 
 @(private = "file")
 @(require_results)
-_create_shader_module_from_memory :: proc(vks: Vulkan_State, code: []byte) -> (module: vk.ShaderModule) {
+_create_shader_module_from_memory :: proc(code: []byte) -> (module: vk.ShaderModule) {
 	as_u32 := slice.reinterpret([]u32, code)
 
 	create_info := vk.ShaderModuleCreateInfo {
@@ -563,7 +568,7 @@ _create_shader_module_from_memory :: proc(vks: Vulkan_State, code: []byte) -> (m
 		codeSize = len(code),
 		pCode    = raw_data(as_u32),
 	}
-	must(vk.CreateShaderModule(vks.device, &create_info, nil, &module))
+	must(vk.CreateShaderModule(ctx.vulkan_state.device, &create_info, nil, &module))
 
 	return
 }
@@ -571,8 +576,6 @@ _create_shader_module_from_memory :: proc(vks: Vulkan_State, code: []byte) -> (m
 @(private = "file")
 @(require_results)
 _create_shader_stages :: proc(
-	vks: Vulkan_State,
-	pm: ^Pipeline_Manager,
 	create_info: ^Create_Pipeline_Info,
 	compile := false,
 	allocator := context.temp_allocator,
@@ -585,7 +588,7 @@ _create_shader_stages :: proc(
 
 	for stage_info, i in create_info.stage_infos {
 		path := strings.concatenate({stage_info.shader_path, ".spv"}, context.temp_allocator)
-		shader_module, ok := _create_shader_module(vks, pm, path, compile, loc)
+		shader_module, ok := _create_shader_module(path, compile, loc)
 
 		if !ok {
 			log.errorf("couldn't create shader module for stage %v. Path: %s", stage_info.stage, stage_info.shader_path)
@@ -603,9 +606,9 @@ _create_shader_stages :: proc(
 }
 
 @(private = "file")
-_destroy_shader_stages :: proc(device: vk.Device, shader_stages: []vk.PipelineShaderStageCreateInfo) {
+_destroy_shader_stages :: proc(shader_stages: []vk.PipelineShaderStageCreateInfo) {
 	for shader_stage in shader_stages {
-		vk.DestroyShaderModule(device, shader_stage.module, nil)
+		vk.DestroyShaderModule(ctx.vulkan_state.device, shader_stage.module, nil)
 	}
 	delete(shader_stages)
 }
@@ -698,7 +701,6 @@ _create_rasterizer :: proc(
 @(private = "file")
 @(require_results)
 _create_multisampling_info :: proc(
-	g: ^Graphics,
 	create_info: ^Create_Pipeline_Info,
 	allocator := context.temp_allocator,
 ) -> ^vk.PipelineMultisampleStateCreateInfo {
@@ -762,7 +764,6 @@ _create_depth_stencil_info :: proc(
 @(private = "file")
 @(require_results)
 _create_pipeline_layout :: proc(
-	g: ^Graphics,
 	descriptor_set_layouts: []vk.DescriptorSetLayout,
 	push_constants: []vk.PushConstantRange = nil,
 	allocator := context.allocator,
@@ -777,7 +778,7 @@ _create_pipeline_layout :: proc(
 	}
 
 	layout := vk.PipelineLayout{}
-	must(vk.CreatePipelineLayout(g.vulkan_state.device, &pipeline_layout_info, nil, &layout))
+	must(vk.CreatePipelineLayout(ctx.vulkan_state.device, &pipeline_layout_info, nil, &layout))
 
 	return layout
 }

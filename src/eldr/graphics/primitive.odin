@@ -1,9 +1,10 @@
 package graphics
 
+import "../common"
 import "core:log"
 import vk "vendor:vulkan"
 
-create_primitive_pipeline :: proc(g: ^Graphics) -> Pipeline_Handle {
+create_primitive_pipeline :: proc() -> Pipeline_Handle {
 	vert_bind, vert_attr := default_shader_attribute()
 
 	set_infos := []Pipeline_Set_Info{create_bindless_pipeline_set_info(context.temp_allocator)}
@@ -38,7 +39,7 @@ create_primitive_pipeline :: proc(g: ^Graphics) -> Pipeline_Handle {
 		stencil = {enable = true, front = {}, back = {}},
 	}
 
-	handle, ok := create_graphics_pipeline(g, &create_info)
+	handle, ok := create_graphics_pipeline(&create_info)
 	if !ok {
 		log.info("couldn't create default pipeline")
 	}
@@ -46,7 +47,7 @@ create_primitive_pipeline :: proc(g: ^Graphics) -> Pipeline_Handle {
 	return handle
 }
 
-create_square_mesh :: proc(g: ^Graphics, size: f32, allocator := context.allocator) -> Mesh {
+create_square_mesh :: proc(size: f32, allocator := context.allocator) -> Mesh {
 	vertices := make([]Vertex, 6, context.allocator)
 	vertices[0] = {{size, size, 0.0}, {size, size}, {0.0, 0.0, size}, {1.0, 1.0, 1.0, 1.0}}
 	vertices[1] = {{size, -size, 0.0}, {size, 0.0}, {0.0, size, 0.0}, {1.0, 1.0, 1.0, 1.0}}
@@ -56,11 +57,11 @@ create_square_mesh :: proc(g: ^Graphics, size: f32, allocator := context.allocat
 	vertices[4] = {{-size, -size, 0}, {0.0, 0.0}, {0.0, size, 0.0}, {1.0, 1.0, 1.0, 1.0}}
 	vertices[5] = {{-size, size, 0.0}, {0.0, size}, {size, size, size}, {1.0, 1.0, 1.0, 1.0}}
 
-	return create_mesh(g.vulkan_state, vertices, {})
+	return create_mesh(vertices, {})
 }
 
-create_square_model :: proc(g: ^Graphics) -> Model {
-	mesh := create_square_mesh(g, 0.3)
+create_square_model :: proc() -> Model {
+	mesh := create_square_mesh(0.3)
 	meshes := make([]Mesh, 1)
 	meshes[0] = mesh
 
@@ -73,19 +74,19 @@ create_square_model :: proc(g: ^Graphics) -> Model {
 	return model
 }
 
-draw_square :: proc(g: ^Graphics, frame_data: Frame_Data, camera: ^Camera, position: vec3, scale: vec3, color: vec4) {
-	model := g.buildin.square
+draw_square :: proc(frame_data: Frame_Data, camera: ^Camera, position: vec3, scale: vec3, color: vec4) {
+	model := ctx.buildin.square
 
-	material := _temp_pool_acquire(g.temp_material_pool)
+	material := _temp_pool_acquire_material()
 	model.materials[0] = material
-	material_set_pipeline(&model.materials[0], g.buildin.primitive_pipeline_h)
+	material_set_pipeline(&model.materials[0], ctx.buildin.primitive_pipeline_h)
 	material_set_color(&model.materials[0], color)
-	_material_apply(&model.materials[0], g)
+	_material_apply(&model.materials[0])
 
-	transform := _temp_pool_acquire(g.temp_transform_pool)
-	trf_set_position(&transform, position)
-	trf_set_scale(&transform, scale)
-	_trf_apply(&transform, g)
+	transform := _temp_pool_acquire_transform()
+	common.trf_set_position(&transform, position)
+	common.trf_set_scale(&transform, scale)
+	_trf_apply(&transform)
 
-	draw_model(g, frame_data, model, camera, &transform)
+	draw_model(frame_data, model, camera, &transform)
 }

@@ -5,19 +5,35 @@ package graphics
 import "core:log"
 
 @(private)
-_init_temp_pools :: proc(g: ^Graphics) {
-	g.temp_material_pool = new(Temp_Material_Pool)
-	_init_temp_material_pool(g, g.temp_material_pool, TEMP_POOL_MATERIAL_SIZE)
-	g.temp_transform_pool = new(Temp_Transform_Pool)
-	_init_temp_transform_pool(g, g.temp_transform_pool, TEMP_POOL_TRANSFORM_SIZE)
+_init_temp_pools :: proc() {
+	ctx.temp_material_pool = new(Temp_Material_Pool)
+	_init_temp_material_pool(ctx.temp_material_pool, TEMP_POOL_MATERIAL_SIZE)
+	ctx.temp_transform_pool = new(Temp_Transform_Pool)
+	_init_temp_transform_pool(ctx.temp_transform_pool, TEMP_POOL_TRANSFORM_SIZE)
 }
 
 @(private)
-_destroy_temp_pools :: proc(g: ^Graphics) {
-	_destroy_temp_material_pool(g, g.temp_material_pool)
-	free(g.temp_material_pool)
-	_destroy_temp_transform_pool(g, g.temp_transform_pool)
-	free(g.temp_transform_pool)
+_destroy_temp_pools :: proc() {
+	_destroy_temp_material_pool(ctx.temp_material_pool)
+	free(ctx.temp_material_pool)
+	_destroy_temp_transform_pool(ctx.temp_transform_pool)
+	free(ctx.temp_transform_pool)
+}
+
+@(require_results)
+_temp_pool_acquire_material :: proc() -> Material {
+	return _temp_pool_acquire(ctx.temp_material_pool)
+}
+
+@(require_results)
+_temp_pool_acquire_transform :: proc() -> Gfx_Transform {
+	return _temp_pool_acquire(ctx.temp_transform_pool)
+}
+
+@(private)
+_clear_temp_pool :: proc() {
+	_temp_pool_clear(ctx.temp_material_pool)
+	_temp_pool_clear(ctx.temp_transform_pool)
 }
 
 @(private = "file")
@@ -31,7 +47,8 @@ _destroy_temp_pool :: proc(pool: ^$P/Temp_Pool($T)) {
 	delete(pool.resources)
 }
 
-@(private)
+
+@(private = "file")
 @(require_results)
 _temp_pool_acquire :: proc(pool: ^$P/Temp_Pool($T)) -> T {
 	when DEBUG {
@@ -49,39 +66,39 @@ _temp_pool_acquire :: proc(pool: ^$P/Temp_Pool($T)) -> T {
 	return pool.resources[pool.next_free_resource]
 }
 
-@(private)
+@(private = "file")
 _temp_pool_clear :: proc(pool: ^$P/Temp_Pool($T)) {
 	pool.next_free_resource = 0
 }
 
-@(private)
-_init_temp_material_pool :: proc(g: ^Graphics, pool: ^Temp_Material_Pool, size: int, allocator := context) {
+@(private = "file")
+_init_temp_material_pool :: proc(pool: ^Temp_Material_Pool, size: int, allocator := context) {
 	_init_temp_pool(pool, size)
 	for i in 0 ..< size {
-		init_material(g, &pool.resources[i], {})
+		init_material(&pool.resources[i], {})
 	}
 }
 
-@(private)
-_destroy_temp_material_pool :: proc(g: ^Graphics, pool: ^Temp_Material_Pool) {
+@(private = "file")
+_destroy_temp_material_pool :: proc(pool: ^Temp_Material_Pool) {
 	for i in 0 ..< len(pool.resources) {
-		destroy_material(g, &pool.resources[i])
+		destroy_material(&pool.resources[i])
 	}
 	_destroy_temp_pool(pool)
 }
 
-@(private)
-_init_temp_transform_pool :: proc(g: ^Graphics, pool: ^Temp_Transform_Pool, size: int, allocator := context) {
+@(private = "file")
+_init_temp_transform_pool :: proc(pool: ^Temp_Transform_Pool, size: int, allocator := context) {
 	_init_temp_pool(pool, size)
 	for i in 0 ..< size {
-		init_trf(g, &pool.resources[i])
+		init_gfx_trf(&pool.resources[i])
 	}
 }
 
 @(private)
-_destroy_temp_transform_pool :: proc(g: ^Graphics, pool: ^Temp_Transform_Pool) {
+_destroy_temp_transform_pool :: proc(pool: ^Temp_Transform_Pool) {
 	for i in 0 ..< len(pool.resources) {
-		destroy_trf(g, &pool.resources[i])
+		destroy_trf(&pool.resources[i])
 	}
 	_destroy_temp_pool(pool)
 }

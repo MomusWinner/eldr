@@ -5,50 +5,45 @@ import "vendor:glfw"
 import vk "vendor:vulkan"
 
 @(require_results)
-get_screen_size :: proc(g: ^Graphics) -> (width: u32, height: u32) {
-	width = g.swapchain.extent.width
-	height = g.swapchain.extent.height
+get_screen_size :: proc() -> (width: u32, height: u32) {
+	width = ctx.swapchain.extent.width
+	height = ctx.swapchain.extent.height
 	return
 }
 
 @(require_results)
-get_screen_width :: proc(g: ^Graphics) -> u32 {return g.swapchain.extent.width}
+get_screen_width :: proc() -> u32 {return ctx.swapchain.extent.width}
 @(require_results)
-get_screen_height :: proc(g: ^Graphics) -> u32 {return g.swapchain.extent.height}
+get_screen_height :: proc() -> u32 {return ctx.swapchain.extent.height}
 @(require_results)
-get_screen_aspect :: proc(g: ^Graphics) -> f32 {return cast(f32)get_screen_width(g) / cast(f32)get_screen_height(g)}
+get_screen_aspect :: proc() -> f32 {return cast(f32)get_screen_width() / cast(f32)get_screen_height()}
 
-get_device_width :: proc(g: ^Graphics) -> u32 {
-	width, height := glfw.GetFramebufferSize(g.window^)
+get_device_width :: proc() -> u32 {
+	width, height := glfw.GetFramebufferSize(ctx.window^)
 	return cast(u32)width
 }
 
-get_device_height :: proc(g: ^Graphics) -> u32 {
-	width, height := glfw.GetFramebufferSize(g.window^)
+get_device_height :: proc() -> u32 {
+	width, height := glfw.GetFramebufferSize(ctx.window^)
 	return cast(u32)height
 }
 
-screen_resized :: proc(g: ^Graphics) -> bool {
-	return g.swapchain_resized
+screen_resized :: proc() -> bool {
+	return ctx.swapchain_resized
 }
 
-set_full_viewport_scissor :: proc(g: ^Graphics, frame_data: Frame_Data, loc := #caller_location) {
-	assert_not_nil(g, loc)
+set_full_viewport_scissor :: proc(frame_data: Frame_Data, loc := #caller_location) {
+	assert_gfx_ctx(loc)
+	width := get_screen_width()
+	height := get_screen_height()
 
-	width := get_screen_width(g)
-	height := get_screen_height(g)
-
-	set_viewport(g, frame_data, width, height, loc = loc)
-	set_scissor(g, frame_data, width, height, loc = loc)
+	set_viewport(frame_data, width, height, loc = loc)
+	set_scissor(frame_data, width, height, loc = loc)
 }
 
-set_viewport :: proc(
-	g: ^Graphics,
-	frame_data: Frame_Data,
-	width, height: u32,
-	max_depth: f32 = 0.1,
-	loc := #caller_location,
-) {
+set_viewport :: proc(frame_data: Frame_Data, width, height: u32, max_depth: f32 = 0.1, loc := #caller_location) {
+	assert_gfx_ctx(loc)
+
 	viewport := vk.Viewport {
 		width    = cast(f32)width,
 		height   = cast(f32)height,
@@ -57,13 +52,9 @@ set_viewport :: proc(
 	vk.CmdSetViewport(frame_data.cmd, 0, 1, &viewport)
 }
 
-set_scissor :: proc(
-	g: ^Graphics,
-	frame_data: Frame_Data,
-	width, height: u32,
-	offset: ivec2 = 0,
-	loc := #caller_location,
-) {
+set_scissor :: proc(frame_data: Frame_Data, width, height: u32, offset: ivec2 = 0, loc := #caller_location) {
+	assert_gfx_ctx(loc)
+
 	scissor := vk.Rect2D {
 		extent = {width = width, height = height},
 		offset = {x = offset.x, y = offset.y},
@@ -71,26 +62,28 @@ set_scissor :: proc(
 	vk.CmdSetScissor(frame_data.cmd, 0, 1, &scissor)
 }
 
-begin_render :: proc(g: ^Graphics) -> Frame_Data {
-	assert(!g.render_started, "Call end_render() after begin_render()")
-	defer g.render_started = true
+begin_render :: proc(loc := #caller_location) -> Frame_Data {
+	assert_gfx_ctx(loc)
+	assert(!ctx.render_started, "Call end_render() after begin_render()", loc)
+
+	defer ctx.render_started = true
 
 	frame_data := Frame_Data {
-		cmd    = g.cmd,
+		cmd    = ctx.cmd,
 		status = .Success,
 	}
 
 	// Wait for previous frame
-	must(vk.WaitForFences(g.vulkan_state.device, 1, &g.fence, true, max(u64)))
+	must(vk.WaitForFences(ctx.vulkan_state.device, 1, &ctx.fence, true, max(u64)))
 
-	images: u32 = cast(u32)len(g.swapchain.images)
+	images: u32 = cast(u32)len(ctx.swapchain.images)
 	acquire_result := vk.AcquireNextImageKHR(
-		device = g.vulkan_state.device,
-		swapchain = g.swapchain.swapchain,
+		device = ctx.vulkan_state.device,
+		swapchain = ctx.swapchain.swapchain,
 		timeout = max(u64),
-		semaphore = g.image_available_semaphore,
+		semaphore = ctx.image_available_semaphore,
 		fence = {},
-		pImageIndex = &g.swapchain.image_index,
+		pImageIndex = &ctx.swapchain.image_index,
 	)
 
 	#partial switch acquire_result {
@@ -102,7 +95,7 @@ begin_render :: proc(g: ^Graphics) -> Frame_Data {
 		log.panicf("acquire next image failure: %v", acquire_result)
 	}
 
-	must(vk.ResetFences(g.vulkan_state.device, 1, &g.fence))
+	must(vk.ResetFences(ctx.vulkan_state.device, 1, &ctx.fence))
 	must(vk.ResetCommandBuffer(frame_data.cmd, {}))
 
 	begin_info := vk.CommandBufferBeginInfo {
@@ -113,11 +106,11 @@ begin_render :: proc(g: ^Graphics) -> Frame_Data {
 	return frame_data
 }
 
-end_render :: proc(g: ^Graphics, frame_data: Frame_Data, sync_data: Sync_Data) {
-	if !g.render_started {
+end_render :: proc(frame_data: Frame_Data, sync_data: Sync_Data = {}) {
+	if !ctx.render_started {
 		log.error("Call begin_render() before end_render()")
 	}
-	defer g.render_started = false
+	defer ctx.render_started = false
 
 	frame_data := frame_data
 
@@ -128,7 +121,7 @@ end_render :: proc(g: ^Graphics, frame_data: Frame_Data, sync_data: Sync_Data) {
 		[]vk.SemaphoreSubmitInfo {
 			{
 				sType = .SEMAPHORE_SUBMIT_INFO,
-				semaphore = g.image_available_semaphore,
+				semaphore = ctx.image_available_semaphore,
 				stageMask = {.COLOR_ATTACHMENT_OUTPUT},
 				deviceIndex = 0,
 			},
@@ -143,7 +136,7 @@ end_render :: proc(g: ^Graphics, frame_data: Frame_Data, sync_data: Sync_Data) {
 
 	signal_semaphore_info := vk.SemaphoreSubmitInfo {
 		sType     = .SEMAPHORE_SUBMIT_INFO,
-		semaphore = g.swapchain.render_finished_semaphores[g.swapchain.image_index],
+		semaphore = ctx.swapchain.render_finished_semaphores[ctx.swapchain.image_index],
 	}
 
 	submit_info := vk.SubmitInfo2 {
@@ -155,17 +148,17 @@ end_render :: proc(g: ^Graphics, frame_data: Frame_Data, sync_data: Sync_Data) {
 		signalSemaphoreInfoCount = 1,
 		pSignalSemaphoreInfos    = &signal_semaphore_info,
 	}
-	must(vk.QueueSubmit2(g.vulkan_state.graphics_queue, 1, &submit_info, g.fence))
+	must(vk.QueueSubmit2(ctx.vulkan_state.graphics_queue, 1, &submit_info, ctx.fence))
 
 	present_info := vk.PresentInfoKHR {
 		sType              = .PRESENT_INFO_KHR,
 		waitSemaphoreCount = 1,
-		pWaitSemaphores    = &g.swapchain.render_finished_semaphores[g.swapchain.image_index],
+		pWaitSemaphores    = &ctx.swapchain.render_finished_semaphores[ctx.swapchain.image_index],
 		swapchainCount     = 1,
-		pSwapchains        = &g.swapchain.swapchain,
-		pImageIndices      = &g.swapchain.image_index,
+		pSwapchains        = &ctx.swapchain.swapchain,
+		pImageIndices      = &ctx.swapchain.image_index,
 	}
-	present_result := vk.QueuePresentKHR(g.vulkan_state.present_queue, &present_info)
+	present_result := vk.QueuePresentKHR(ctx.vulkan_state.present_queue, &present_info)
 
 	switch {
 	case present_result == .ERROR_OUT_OF_DATE_KHR || present_result == .SUBOPTIMAL_KHR:
@@ -175,30 +168,29 @@ end_render :: proc(g: ^Graphics, frame_data: Frame_Data, sync_data: Sync_Data) {
 		log.panicf("vulkan: present failure: %v", present_result)
 	}
 
-	if g.swapchain_resized {
-		g.swapchain_resized = false
+	if ctx.swapchain_resized {
+		ctx.swapchain_resized = false
 	}
 
 	if frame_data.status == .IncorrectSwapchainSize {
-		g.swapchain_resized = true
-		on_screen_resized(g)
+		ctx.swapchain_resized = true
+		on_screen_resized()
 	}
 
-	_temp_pool_clear(g.temp_material_pool)
-	_temp_pool_clear(g.temp_transform_pool)
-	_deffered_destructor_clean(g)
+	_clear_temp_pool()
+	_clear_deffered_destructor()
 }
 
-begin_draw :: proc(g: ^Graphics, frame: Frame_Data) -> Frame_Data {
+begin_draw :: proc(frame: Frame_Data) -> Frame_Data {
 	clear_color := vk.ClearValue {
 		color = {float32 = {0.0, 0.0, 0.0, 1.0}},
 	}
 
-	_transition_image_layout_from_cmd(
+	_transition_image_layout(
 		frame.cmd,
-		g.swapchain.images[g.swapchain.image_index],
+		ctx.swapchain.images[ctx.swapchain.image_index],
 		{.COLOR},
-		g.swapchain.format.format,
+		ctx.swapchain.format.format,
 		.UNDEFINED,
 		.COLOR_ATTACHMENT_OPTIMAL,
 		1,
@@ -207,10 +199,10 @@ begin_draw :: proc(g: ^Graphics, frame: Frame_Data) -> Frame_Data {
 	color_attachment_info := vk.RenderingAttachmentInfo {
 		sType              = .RENDERING_ATTACHMENT_INFO,
 		pNext              = nil,
-		imageView          = g.swapchain.color_image.view,
+		imageView          = ctx.swapchain.color_image.view,
 		imageLayout        = .ATTACHMENT_OPTIMAL,
 		resolveMode        = {.AVERAGE_KHR},
-		resolveImageView   = g.swapchain.image_views[g.swapchain.image_index],
+		resolveImageView   = ctx.swapchain.image_views[ctx.swapchain.image_index],
 		resolveImageLayout = .GENERAL,
 		loadOp             = .CLEAR,
 		storeOp            = .STORE,
@@ -224,7 +216,7 @@ begin_draw :: proc(g: ^Graphics, frame: Frame_Data) -> Frame_Data {
 	depth_stencil_attachment_info := vk.RenderingAttachmentInfo {
 		sType       = .RENDERING_ATTACHMENT_INFO,
 		pNext       = nil,
-		imageView   = g.swapchain.depth_image.view,
+		imageView   = ctx.swapchain.depth_image.view,
 		imageLayout = .DEPTH_STENCIL_ATTACHMENT_OPTIMAL,
 		loadOp      = .CLEAR,
 		storeOp     = .DONT_CARE,
@@ -233,7 +225,7 @@ begin_draw :: proc(g: ^Graphics, frame: Frame_Data) -> Frame_Data {
 
 	rendering_info := vk.RenderingInfo {
 		sType = .RENDERING_INFO,
-		renderArea = {extent = g.swapchain.extent},
+		renderArea = {extent = ctx.swapchain.extent},
 		layerCount = 1,
 		colorAttachmentCount = 1,
 		pColorAttachments = &color_attachment_info,
@@ -245,38 +237,38 @@ begin_draw :: proc(g: ^Graphics, frame: Frame_Data) -> Frame_Data {
 	frame := frame
 	frame.surface_info = {
 		type         = .Swapchain,
-		sample_count = g.swapchain.sample_count,
+		sample_count = ctx.swapchain.sample_count,
 	}
 
 	return frame
 }
 
-end_draw :: proc(g: ^Graphics, frame: Frame_Data) {
+end_draw :: proc(frame: Frame_Data) {
 	vk.CmdEndRendering(frame.cmd)
 
-	_transition_image_layout_from_cmd(
+	_transition_image_layout(
 		frame.cmd,
-		g.swapchain.images[g.swapchain.image_index],
+		ctx.swapchain.images[ctx.swapchain.image_index],
 		{.COLOR},
-		g.swapchain.format.format,
+		ctx.swapchain.format.format,
 		.COLOR_ATTACHMENT_OPTIMAL,
 		.PRESENT_SRC_KHR,
 		1,
 	)
 }
 
-on_screen_resized :: proc(g: ^Graphics) {
+on_screen_resized :: proc() {
 	// Don't do anything when minimized.
-	for w, h := glfw.GetFramebufferSize(g.window^); w == 0 || h == 0; w, h = glfw.GetFramebufferSize(g.window^) {
+	for w, h := glfw.GetFramebufferSize(ctx.window^); w == 0 || h == 0; w, h = glfw.GetFramebufferSize(ctx.window^) {
 		glfw.WaitEvents()
 
 		// Handle closing while minimized.
-		if glfw.WindowShouldClose(g.window^) {return}
+		if glfw.WindowShouldClose(ctx.window^) {return}
 	}
-	_recreate_swapchain(g.swapchain, g.vulkan_state, g.window)
-	_surface_manager_recreate_surfaces(g.surface_manager, g)
+	_recreate_swapchain()
+	_surface_manager_recreate_surfaces(ctx.surface_manager)
 }
 
-wait_render_completion :: proc(g: ^Graphics) {
-	vk.DeviceWaitIdle(g.vulkan_state.device)
+wait_render_completion :: proc() {
+	vk.DeviceWaitIdle(ctx.vulkan_state.device)
 }

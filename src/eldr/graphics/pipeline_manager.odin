@@ -11,27 +11,27 @@ import "core:strings"
 import "shaderc"
 import vk "vendor:vulkan"
 
-pipeline_hot_reload :: proc(g: ^Graphics) {
-	_pipeline_manager_hot_reload(g.pipeline_manager, g)
+pipeline_hot_reload :: proc() {
+	_pipeline_manager_hot_reload()
 }
 
-get_graphics_pipeline :: proc(g: ^Graphics, handle: Pipeline_Handle) -> (^Graphics_Pipeline, bool) {
-	return _pipeline_manager_get_graphics_pipeline(g.pipeline_manager, handle)
+get_graphics_pipeline :: proc(handle: Pipeline_Handle) -> (^Graphics_Pipeline, bool) {
+	return _pipeline_manager_get_graphics_pipeline(ctx.pipeline_manager, handle)
 }
 
-get_compute_pipeline :: proc(g: ^Graphics, handle: Pipeline_Handle) -> (^Compute_Pipeline, bool) {
-	return _pipeline_manager_get_compute_pipeline(g.pipeline_manager, handle)
+get_compute_pipeline :: proc(handle: Pipeline_Handle) -> (^Compute_Pipeline, bool) {
+	return _pipeline_manager_get_compute_pipeline(ctx.pipeline_manager, handle)
 }
 
-_init_pipeline_manager :: proc(g: ^Graphics, enable_compilation: bool) {
-	assert(g.pipeline_manager == nil)
-	g.pipeline_manager = new(Pipeline_Manager)
-	_pipeline_manager_init(g.pipeline_manager, enable_compilation)
+_init_pipeline_manager :: proc(enable_compilation: bool) {
+	assert(ctx.pipeline_manager == nil)
+	ctx.pipeline_manager = new(Pipeline_Manager)
+	_pipeline_manager_init(ctx.pipeline_manager, enable_compilation)
 }
 
-_destroy_pipeline_manager :: proc(g: ^Graphics) {
-	_pipeline_manager_destroy(g.pipeline_manager, g.vulkan_state)
-	free(g.pipeline_manager)
+_destroy_pipeline_manager :: proc() {
+	_pipeline_manager_destroy(ctx.pipeline_manager)
+	free(ctx.pipeline_manager)
 }
 
 @(private = "file")
@@ -47,12 +47,12 @@ _pipeline_manager_init :: proc(pm: ^Pipeline_Manager, enable_compilation: bool) 
 }
 
 @(private = "file")
-_pipeline_manager_destroy :: proc(pm: ^Pipeline_Manager, vks: Vulkan_State) {
+_pipeline_manager_destroy :: proc(pm: ^Pipeline_Manager) {
 	for &pipeline in pm.pipelines.values {
-		destroy_graphics_pipeline(vks, &pipeline)
+		destroy_graphics_pipeline(&pipeline)
 	}
 	for &pipeline in pm.compute_pipelines.values {
-		destroy_compute_pipeline(vks, &pipeline)
+		destroy_compute_pipeline(&pipeline)
 	}
 	hm.destroy(&pm.pipelines)
 	hm.destroy(&pm.compute_pipelines)
@@ -101,16 +101,16 @@ _pipeline_manager_get_compute_pipeline :: proc(
 }
 
 @(private = "file")
-_pipeline_manager_hot_reload :: proc(pm: ^Pipeline_Manager, g: ^Graphics) {
-	assert(pm.enable_compilation)
+_pipeline_manager_hot_reload :: proc() {
+	assert(ctx.pipeline_manager.enable_compilation)
 
-	vk.WaitForFences(g.vulkan_state.device, 1, &g.fence, true, max(u64))
+	fence := ctx.fence
+	vk.WaitForFences(ctx.vulkan_state.device, 1, &fence, true, max(u64))
 
 	log.debug("--- RELOADING SHADERS ---")
-	for &pipeline in pm.pipelines.values {
+	for &pipeline in ctx.pipeline_manager.pipelines.values {
 		pipeline_info: ^Create_Pipeline_Info
-
-		_reload_graphics_pipeline(g, &pipeline)
+		_reload_graphics_pipeline(&pipeline)
 	}
 }
 

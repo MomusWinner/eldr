@@ -50,7 +50,7 @@ default_shader_attribute :: proc(
 create_default_pipeline :: proc() -> eldr.Pipeline_Handle {
 	vert_bind, vert_attr := default_shader_attribute()
 
-	set_infos := []eldr.Pipeline_Set_Info{eldr.create_bindless_pipeline_set_info(context.temp_allocator)}
+	set_infos := []eldr.Pipeline_Set_Info{gfx.create_bindless_pipeline_set_info(context.temp_allocator)}
 
 	push_constants := []gfx.Push_Constant_Range { 	// const
 		{offset = 0, size = size_of(gfx.Push_Constant), stageFlags = vk.ShaderStageFlags_ALL_GRAPHICS},
@@ -82,7 +82,7 @@ create_default_pipeline :: proc() -> eldr.Pipeline_Handle {
 		stencil = {enable = true, front = {}, back = {}},
 	}
 
-	handle, ok := eldr.create_graphics_pipeline(&create_info)
+	handle, ok := gfx.create_graphics_pipeline(&create_info)
 	if !ok {
 		log.info("couldn't create default pipeline")
 	}
@@ -93,7 +93,7 @@ create_default_pipeline :: proc() -> eldr.Pipeline_Handle {
 create_postprocessing_pipeline :: proc() -> eldr.Pipeline_Handle {
 	vert_bind, vert_attr := default_shader_attribute()
 
-	set_infos := []eldr.Pipeline_Set_Info{eldr.create_bindless_pipeline_set_info(context.temp_allocator)}
+	set_infos := []eldr.Pipeline_Set_Info{gfx.create_bindless_pipeline_set_info(context.temp_allocator)}
 
 	push_constants := []gfx.Push_Constant_Range { 	// const
 		{offset = 0, size = size_of(gfx.Push_Constant), stageFlags = vk.ShaderStageFlags_ALL_GRAPHICS},
@@ -125,7 +125,7 @@ create_postprocessing_pipeline :: proc() -> eldr.Pipeline_Handle {
 		stencil = {enable = true, front = {}, back = {}},
 	}
 
-	handle, ok := eldr.create_graphics_pipeline(&create_info)
+	handle, ok := gfx.create_graphics_pipeline(&create_info)
 	if !ok {
 		log.info("couldn't create default pipeline")
 	}

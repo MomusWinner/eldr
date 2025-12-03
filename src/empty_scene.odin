@@ -28,17 +28,20 @@ empty_scene_update :: proc(s: ^Scene) {
 empty_scene_draw :: proc(s: ^Scene) {
 	e := &eldr.ctx
 
-	frame_data := eldr.begin_render()
+	frame_data := gfx.begin_render()
 	// Begin gfx. ------------------------------
 
-	eldr.set_full_viewport_scissor(frame_data)
+	gfx.set_full_viewport_scissor(frame_data)
 
-	base_frame := eldr.begin_draw(frame_data)
+	base_frame := gfx.begin_draw(frame_data)
 
-	eldr.end_draw(frame_data)
+	gfx.end_draw(frame_data)
 
+	sync_data := gfx.Sync_Data {
+		wait_semaphore_infos = make([]vk.SemaphoreSubmitInfo, 0),
+	}
 	// End gfx. ------------------------------
-	eldr.end_render(frame_data)
+	gfx.end_render(frame_data, sync_data)
 
 }
 

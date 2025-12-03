@@ -70,7 +70,6 @@ RegisterUniform(Transform, {
 
 RegisterUniform(Model, {
     mat4 model;
-    mat4 tangens;
 });
 
 #define getModel() GetResource(Model, PushConstants.model)

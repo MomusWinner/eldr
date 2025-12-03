@@ -12,18 +12,18 @@ STORAGE_BINDING :: 1
 TEXTURE_BINDING :: 2
 
 @(require_results)
-bindless_store_texture :: proc(g: ^Graphics, texture: Texture, loc := #caller_location) -> Texture_Handle {
-	assert_not_nil(g, loc)
+bindless_store_texture :: proc(texture: Texture, loc := #caller_location) -> Texture_Handle {
+	assert_gfx_ctx(loc)
 
-	return _bindless_store_texture(g.bindless, g.vulkan_state.device, texture)
+	return _bindless_store_texture(ctx.bindless, texture, loc)
 }
 
-bindless_destroy_texture :: proc(g: ^Graphics, texture_h: Texture_Handle, loc := #caller_location) -> bool {
-	assert_not_nil(g, loc)
+bindless_destroy_texture :: proc(texture_h: Texture_Handle, loc := #caller_location) -> bool {
+	assert_gfx_ctx(loc)
 
-	texture, has_texture := _bindless_remove_texture(g.bindless, texture_h)
+	texture, has_texture := _bindless_remove_texture(ctx.bindless, texture_h)
 	if has_texture {
-		destroy_texture(g.vulkan_state, &texture)
+		destroy_texture(&texture)
 		return true
 	}
 
@@ -31,28 +31,28 @@ bindless_destroy_texture :: proc(g: ^Graphics, texture_h: Texture_Handle, loc :=
 }
 
 @(require_results)
-bindless_store_buffer :: proc(g: ^Graphics, buffer: Buffer, loc := #caller_location) -> Buffer_Handle {
-	assert_not_nil(g, loc)
+bindless_store_buffer :: proc(buffer: Buffer, loc := #caller_location) -> Buffer_Handle {
+	assert_gfx_ctx(loc)
 
-	return _bindless_store_buffer(g.bindless, g.vulkan_state.device, buffer)
+	return _bindless_store_buffer(ctx.bindless, buffer, loc)
 }
 
-bindless_destroy_buffer :: proc(g: ^Graphics, buffer_h: Buffer_Handle, loc := #caller_location) {
-	assert_not_nil(g, loc)
+bindless_destroy_buffer :: proc(buffer_h: Buffer_Handle, loc := #caller_location) {
+	assert_gfx_ctx(loc)
 
-	buffer, has_buffer := _bindless_remove_buffer(g.bindless, buffer_h)
+	buffer, has_buffer := _bindless_remove_buffer(ctx.bindless, buffer_h)
 	if has_buffer {
-		destroy_buffer(&buffer, g.vulkan_state)
+		destroy_buffer(&buffer)
 	}
 }
 
 @(require_results)
-bindless_get_buffer :: proc(g: ^Graphics, buffer_h: Buffer_Handle, loc := #caller_location) -> ^Buffer {
-	assert_not_nil(g, loc)
+bindless_get_buffer :: proc(buffer_h: Buffer_Handle, loc := #caller_location) -> ^Buffer {
+	assert_gfx_ctx(loc)
 
-	result, ok := hm.get(&g.bindless.buffers, buffer_h)
+	result, ok := hm.get(&ctx.bindless.buffers, buffer_h)
 	if !ok {
-		log.error("couln't get buffer by handle ", buffer_h)
+		log.error("couln't get buffer by handle ", buffer_h, loc)
 		return nil
 	}
 
@@ -86,41 +86,36 @@ create_bindless_pipeline_set_info :: proc(allocator := context.allocator) -> Pip
 }
 
 @(require_results)
-bindless_get_texture :: proc(g: ^Graphics, texture_h: Texture_Handle, loc := #caller_location) -> (^Texture, bool) {
-	assert_not_nil(g, loc)
+bindless_get_texture :: proc(texture_h: Texture_Handle, loc := #caller_location) -> (^Texture, bool) {
+	assert_gfx_ctx(loc)
 
-	return hm.get(&g.bindless.textures, texture_h)
+	return hm.get(&ctx.bindless.textures, texture_h)
 }
 
-bindless_bind :: proc(
-	g: ^Graphics,
-	cmd: vk.CommandBuffer,
-	pipeline_layout: vk.PipelineLayout,
-	loc := #caller_location,
-) {
-	assert_not_nil(g, loc)
+bindless_bind :: proc(cmd: vk.CommandBuffer, pipeline_layout: vk.PipelineLayout, loc := #caller_location) {
+	assert_gfx_ctx(loc)
 
-	vk.CmdBindDescriptorSets(cmd, .GRAPHICS, pipeline_layout, 0, 1, &g.bindless.set, 0, nil)
+	vk.CmdBindDescriptorSets(cmd, .GRAPHICS, pipeline_layout, 0, 1, &ctx.bindless.set, 0, nil)
 }
 
 @(private)
-_init_bindless :: proc(g: ^Graphics, loc := #caller_location) {
-	assert(g.bindless == nil, "Bindless already initialized", loc)
+_init_bindless :: proc(loc := #caller_location) {
+	assert(ctx.bindless == nil, "Bindless already initialized", loc)
 
-	g.bindless = new(Bindless)
-	_bindless_init(g.bindless, g.vulkan_state)
+	ctx.bindless = new(Bindless)
+	_bindless_init(ctx.bindless)
 }
 
 @(private)
-_destory_bindless :: proc(g: ^Graphics, loc := #caller_location) {
-	assert(g.bindless != nil, "Bindless already uninitialized", loc)
+_destory_bindless :: proc(loc := #caller_location) {
+	assert(ctx.bindless != nil, "Bindless already uninitialized", loc)
 
-	_bindless_destroy(g.bindless, g.vulkan_state)
-	free(g.bindless)
+	_bindless_destroy(ctx.bindless)
+	free(ctx.bindless)
 }
 
 @(private = "file")
-_bindless_init :: proc(bindless: ^Bindless, vks: Vulkan_State, loc := #caller_location) {
+_bindless_init :: proc(bindless: ^Bindless, loc := #caller_location) {
 	assert_not_nil(bindless, loc)
 
 	descriptor_types := [3]vk.DescriptorType{.UNIFORM_BUFFER, .STORAGE_BUFFER, .COMBINED_IMAGE_SAMPLER}
@@ -150,32 +145,32 @@ _bindless_init :: proc(bindless: ^Bindless, vks: Vulkan_State, loc := #caller_lo
 		pNext        = &binding_flags,
 	}
 
-	must(vk.CreateDescriptorSetLayout(vks.device, &create_info, nil, &bindless.set_layout))
+	must(vk.CreateDescriptorSetLayout(ctx.vulkan_state.device, &create_info, nil, &bindless.set_layout))
 
 	allocate_info := vk.DescriptorSetAllocateInfo {
 		sType              = .DESCRIPTOR_SET_ALLOCATE_INFO,
 		pNext              = nil,
-		descriptorPool     = vks.descriptor_pool,
+		descriptorPool     = ctx.vulkan_state.descriptor_pool,
 		pSetLayouts        = &bindless.set_layout,
 		descriptorSetCount = 1,
 	}
 
-	must(vk.AllocateDescriptorSets(vks.device, &allocate_info, &bindless.set))
+	must(vk.AllocateDescriptorSets(ctx.vulkan_state.device, &allocate_info, &bindless.set))
 }
 
 @(private = "file")
-_bindless_destroy :: proc(bindless: ^Bindless, vks: Vulkan_State, loc := #caller_location) {
+_bindless_destroy :: proc(bindless: ^Bindless, loc := #caller_location) {
 	assert_not_nil(bindless, loc)
 
-	vk.DestroyDescriptorSetLayout(vks.device, bindless.set_layout, nil)
+	vk.DestroyDescriptorSetLayout(ctx.vulkan_state.device, bindless.set_layout, nil)
 
 	for &texture in bindless.textures.values {
-		destroy_texture(vks, &texture)
+		destroy_texture(&texture)
 	}
 	hm.destroy(&bindless.textures)
 
 	for &buffer in bindless.buffers.values {
-		destroy_buffer(&buffer, vks)
+		destroy_buffer(&buffer)
 	}
 	hm.destroy(&bindless.buffers)
 }
@@ -193,12 +188,7 @@ _bindless_bind :: proc(
 }
 
 @(private = "file")
-_bindless_store_texture :: proc(
-	bindless: ^Bindless,
-	device: vk.Device,
-	texture: Texture,
-	loc := #caller_location,
-) -> Texture_Handle {
+_bindless_store_texture :: proc(bindless: ^Bindless, texture: Texture, loc := #caller_location) -> Texture_Handle {
 	assert_not_nil(bindless, loc)
 
 	handle := hm.insert(&bindless.textures, texture)
@@ -218,7 +208,7 @@ _bindless_store_texture :: proc(
 		dstArrayElement = handle.index,
 		pImageInfo      = &image_info,
 	}
-	vk.UpdateDescriptorSets(device, 1, &write, 0, nil)
+	vk.UpdateDescriptorSets(ctx.vulkan_state.device, 1, &write, 0, nil)
 
 	return handle
 }
@@ -238,12 +228,7 @@ _bindless_remove_texture :: proc(
 }
 
 @(private = "file")
-_bindless_store_buffer :: proc(
-	bindless: ^Bindless,
-	device: vk.Device,
-	buffer: Buffer,
-	loc := #caller_location,
-) -> Buffer_Handle {
+_bindless_store_buffer :: proc(bindless: ^Bindless, buffer: Buffer, loc := #caller_location) -> Buffer_Handle {
 	assert_not_nil(bindless, loc)
 
 	handle := hm.insert(&bindless.buffers, buffer)
@@ -275,7 +260,7 @@ _bindless_store_buffer :: proc(
 		writes[i].descriptorType = .STORAGE_BUFFER
 	}
 
-	vk.UpdateDescriptorSets(device, i, raw_data(&writes), 0, nil)
+	vk.UpdateDescriptorSets(ctx.vulkan_state.device, i, raw_data(&writes), 0, nil)
 
 	return handle
 }

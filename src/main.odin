@@ -6,7 +6,6 @@ import "core:mem"
 import "eldr"
 import gfx "eldr/graphics"
 
-vec3 :: [3]f32
 current_scene: Scene
 
 main :: proc() {
@@ -63,7 +62,7 @@ fixed_update :: proc(user_data: rawptr) {
 update :: proc(user_data: rawptr) {
 	if (eldr.is_key_pressed(.R)) {
 		g := eldr.ctx.gfx // TODO:
-		gfx.pipeline_hot_reload(g)
+		gfx.pipeline_hot_reload()
 	}
 
 	if (eldr.is_key_pressed(.Escape)) {

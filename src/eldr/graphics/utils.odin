@@ -9,6 +9,14 @@ import vk "vendor:vulkan"
 merge :: common.merge
 assert_not_nil :: common.assert_not_nil
 
+assert_gfx_ctx :: #force_inline proc(loc := #caller_location) {
+	assert(
+		ctx.initialized == true,
+		"Graphics not initialized. Call 'graphics.init()' before using any graphics functions.",
+		loc = loc,
+	)
+}
+
 @(private)
 must :: proc(result: vk.Result, msg: string = "", loc := #caller_location) {
 	if result != .SUCCESS {

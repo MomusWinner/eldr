@@ -39,7 +39,9 @@ Buildin_Resource :: struct {
 }
 
 Vulkan_State :: struct {
-	instance_info:            vk.InstanceCreateInfo,
+	enabled_layer_names:      []cstring,
+	// application_info:         vk.ApplicationInfo,
+	// instance_info:            vk.InstanceCreateInfo,
 	instance:                 vk.Instance,
 	physical_device:          vk.PhysicalDevice,
 	physical_device_property: vk.PhysicalDeviceProperties,
@@ -63,6 +65,7 @@ Graphics_Init_Info :: struct {
 }
 
 Graphics :: struct {
+	initialized:               bool,
 	window:                    ^glfw.WindowHandle,
 	vulkan_state:              Vulkan_State,
 	limits:                    Graphics_Limits,
@@ -297,18 +300,13 @@ Material_UBO :: struct {
 	pad2:    u32,
 }
 
-Transform :: struct {
-	buffer_h: Buffer_Handle,
-	model:    mat4,
-	position: vec3,
-	rotation: quat,
-	scale:    vec3,
-	dirty:    bool,
+Gfx_Transform :: struct {
+	using base: common.Transform,
+	buffer_h:   Buffer_Handle,
 }
 
 Transform_UBO :: struct {
-	model:   glsl.mat4,
-	tangens: glsl.mat4,
+	model: glsl.mat4,
 }
 
 Mesh :: struct {
@@ -348,7 +346,7 @@ Text :: struct {
 	vbo:       Buffer,
 	last_vbo:  Buffer,
 	vertices:  []FontVertex,
-	transform: Transform,
+	transform: Gfx_Transform,
 	material:  Material,
 }
 
@@ -377,7 +375,7 @@ Surface_Manager :: struct {
 
 Surface :: struct {
 	model:            Model,
-	transform:        Transform,
+	transform:        Gfx_Transform,
 	color_attachment: Maybe(Surface_Color_Attachment),
 	depth_attachment: Maybe(Surface_Depth_Attachment),
 	extent:           vk.Extent2D,
@@ -444,7 +442,7 @@ Bindless :: struct {
 // TEMP RESOURCES
 
 Temp_Material_Pool :: Temp_Pool(Material)
-Temp_Transform_Pool :: Temp_Pool(Transform)
+Temp_Transform_Pool :: Temp_Pool(Gfx_Transform)
 
 Temp_Pool :: struct($T: typeid) {
 	resources:          []T,

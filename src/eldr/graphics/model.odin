@@ -3,11 +3,11 @@ package graphics
 import "core:log"
 import vk "vendor:vulkan"
 
-create_mesh :: proc(vks: Vulkan_State, vertices: []Vertex, indices: []u16, loc := #caller_location) -> Mesh {
+create_mesh :: proc(vertices: []Vertex, indices: []u16, loc := #caller_location) -> Mesh {
 	assert(len(vertices) > 0, loc = loc)
 
 	vertices_size := cast(vk.DeviceSize)(size_of(vertices[0]) * len(vertices))
-	vertex_buffer := create_vertex_buffer(vks, raw_data(vertices), vertices_size)
+	vertex_buffer := create_vertex_buffer(raw_data(vertices), vertices_size)
 
 	mesh := Mesh {
 		vertices = vertices,
@@ -17,7 +17,7 @@ create_mesh :: proc(vks: Vulkan_State, vertices: []Vertex, indices: []u16, loc :
 
 	if len(indices) != 0 {
 		indices_size := cast(vk.DeviceSize)(size_of(indices[0]) * len(indices))
-		index_buffer := create_index_buffer(vks, raw_data(indices), indices_size)
+		index_buffer := create_index_buffer(raw_data(indices), indices_size)
 		mesh.ebo = index_buffer
 	} else {
 		mesh.ebo = nil
@@ -26,26 +26,27 @@ create_mesh :: proc(vks: Vulkan_State, vertices: []Vertex, indices: []u16, loc :
 	return mesh
 }
 
-destroy_mesh :: proc(vks: Vulkan_State, mesh: ^Mesh, loc := #caller_location) {
+destroy_mesh :: proc(mesh: ^Mesh, loc := #caller_location) {
 	assert_not_nil(mesh)
 
-	destroy_buffer(&mesh.vbo, vks)
+	destroy_buffer(&mesh.vbo)
 	ebo, has_ebo := mesh.ebo.?
-	if has_ebo {destroy_buffer(&ebo, vks)}
+	if has_ebo {
+		destroy_buffer(&ebo)
+	}
 	delete(mesh.vertices)
 	delete(mesh.indices)
 }
 
 draw_mesh :: proc(
-	g: ^Graphics,
 	frame_data: Frame_Data,
 	mesh: ^Mesh,
 	material: ^Material,
 	camera: ^Camera,
-	transform: ^Transform,
+	transform: ^Gfx_Transform,
 	loc := #caller_location,
 ) {
-	assert_not_nil(g, loc)
+	assert_gfx_ctx(loc)
 	assert_not_nil(mesh, loc)
 	assert_not_nil(material, loc)
 	assert_not_nil(camera, loc)
@@ -60,18 +61,18 @@ draw_mesh :: proc(
 		vk.CmdBindIndexBuffer(frame_data.cmd, ebo.buffer, 0, .UINT16)
 	}
 
-	pipeline, ok := get_graphics_pipeline(g, material.pipeline_h)
+	pipeline, ok := get_graphics_pipeline(material.pipeline_h)
 	assert(ok, "Couldn't get pipeline")
 
-	_trf_apply(transform, g)
-	_material_apply(material, g)
+	_trf_apply(transform)
+	_material_apply(material)
 
-	bind_pipeline(g, pipeline, frame_data, loc)
+	bind_pipeline(pipeline, frame_data, loc)
 
-	bindless_bind(g, frame_data.cmd, pipeline.layout)
+	bindless_bind(frame_data.cmd, pipeline.layout)
 
 	const := Push_Constant {
-		camera   = _camera_get_buffer(camera, g, get_screen_aspect(g)).index,
+		camera   = _camera_get_buffer(camera, get_screen_aspect()).index,
 		model    = transform.buffer_h.index,
 		material = material.buffer_h.index,
 	}
@@ -96,12 +97,12 @@ create_model :: proc(meshes: []Mesh, materials: [dynamic]Material, mesh_material
 	return Model{meshes = meshes, materials = materials, mesh_material = mesh_material}
 }
 
-destroy_model :: proc(g: ^Graphics, model: ^Model) {
+destroy_model :: proc(model: ^Model) {
 	for &mesh in model.meshes {
-		destroy_mesh(g.vulkan_state, &mesh)
+		destroy_mesh(&mesh)
 	}
 	for &mat in model.materials { 	// TODO: material
-		destroy_material(g, &mat)
+		destroy_material(&mat)
 	}
 
 	delete(model.meshes)
@@ -110,17 +111,16 @@ destroy_model :: proc(g: ^Graphics, model: ^Model) {
 }
 
 draw_model :: proc(
-	g: ^Graphics,
 	frame_data: Frame_Data,
 	model: Model,
 	camera: ^Camera,
-	transform: ^Transform,
+	transform: ^Gfx_Transform,
 	loc := #caller_location,
 ) {
-	assert_not_nil(g, loc)
+	assert_gfx_ctx(loc)
 	assert_not_nil(transform, loc)
 	for &mesh, i in model.meshes {
 		material_index := model.mesh_material[i]
-		draw_mesh(g, frame_data, &mesh, &model.materials[material_index], camera, transform, loc)
+		draw_mesh(frame_data, &mesh, &model.materials[material_index], camera, transform, loc)
 	}
 }

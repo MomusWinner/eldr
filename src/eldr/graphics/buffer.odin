@@ -9,62 +9,44 @@ import "vendor:glfw"
 import vk "vendor:vulkan"
 import "vma"
 
-destroy_buffer :: proc(buffer: ^Buffer, vks: Vulkan_State, loc := #caller_location) {
+destroy_buffer :: proc(buffer: ^Buffer, loc := #caller_location) {
 	assert_not_nil(buffer, loc)
 
 	if (buffer.mapped != nil) {
-		vma.UnmapMemory(vks.allocator, buffer.allocation)
+		vma.UnmapMemory(ctx.vulkan_state.allocator, buffer.allocation)
 		buffer.mapped = nil
 	}
-	vma.DestroyBuffer(vks.allocator, buffer.buffer, buffer.allocation)
+	vma.DestroyBuffer(ctx.vulkan_state.allocator, buffer.buffer, buffer.allocation)
 }
 
-create_vertex_buffer :: proc(
-	vks: Vulkan_State,
-	vertices: rawptr,
-	size: vk.DeviceSize,
-	loc := #caller_location,
-) -> Buffer {
+create_vertex_buffer :: proc(vertices: rawptr, size: vk.DeviceSize, loc := #caller_location) -> Buffer {
 	assert(vertices != nil, loc = loc)
 	assert(size > 0, loc = loc)
 
-	return _create_device_local_buffer(vks, size, vertices, {.VERTEX_BUFFER}, {.SHADER_READ}, {.VERTEX_SHADER})
+	return _create_device_local_buffer(size, vertices, {.VERTEX_BUFFER}, {.SHADER_READ}, {.VERTEX_SHADER})
 }
 
-create_index_buffer :: proc(
-	vks: Vulkan_State,
-	indices: rawptr,
-	size: vk.DeviceSize,
-	loc := #caller_location,
-) -> Buffer {
+create_index_buffer :: proc(indices: rawptr, size: vk.DeviceSize, loc := #caller_location) -> Buffer {
 	assert(indices != nil, loc = loc)
 	assert(size > 0, loc = loc)
 
-	return _create_device_local_buffer(vks, size, indices, {.INDEX_BUFFER}, {.INDEX_READ}, {.VERTEX_INPUT})
+	return _create_device_local_buffer(size, indices, {.INDEX_BUFFER}, {.INDEX_READ}, {.VERTEX_INPUT})
 }
 
-create_uniform_buffer :: proc(vks: Vulkan_State, size: vk.DeviceSize, loc := #caller_location) -> Buffer {
+create_uniform_buffer :: proc(size: vk.DeviceSize, loc := #caller_location) -> Buffer {
 	assert(size > 0, loc = loc)
 
-	return _create_mapped_buffer(vks, size, {.UNIFORM_BUFFER}, {.UNIFORM_READ}, {.VERTEX_SHADER})
+	return _create_mapped_buffer(size, {.UNIFORM_BUFFER}, {.UNIFORM_READ}, {.VERTEX_SHADER})
 }
 
 // TODO: only for particle
 create_ssbo :: proc(g: ^Graphics, data: rawptr, size: vk.DeviceSize) -> Buffer {
-	return _create_device_local_buffer(
-		g.vulkan_state,
-		size,
-		data,
-		{.VERTEX_BUFFER, .STORAGE_BUFFER},
-		{.SHADER_READ},
-		{.VERTEX_SHADER},
-	)
+	return _create_device_local_buffer(size, data, {.VERTEX_BUFFER, .STORAGE_BUFFER}, {.SHADER_READ}, {.VERTEX_SHADER})
 }
 
 @(private)
 _fill_buffer :: proc(
 	buffer: ^Buffer,
-	vks: Vulkan_State,
 	buffer_size: vk.DeviceSize,
 	data: rawptr,
 	offset: vk.DeviceSize = 0,
@@ -73,7 +55,7 @@ _fill_buffer :: proc(
 	assert_not_nil(buffer, loc)
 	assert(buffer_size > 0, loc = loc)
 
-	vma.CopyMemoryToAllocation(vks.allocator, data, buffer.allocation, offset, buffer_size)
+	vma.CopyMemoryToAllocation(ctx.vulkan_state.allocator, data, buffer.allocation, offset, buffer_size)
 }
 
 @(private)
@@ -88,7 +70,6 @@ _copy_buffer :: proc(cb: vk.CommandBuffer, src_buffer: Buffer, dst_buffer: Buffe
 
 @(private)
 _create_buffer :: proc(
-	vks: Vulkan_State,
 	size: vk.DeviceSize,
 	usage: vk.BufferUsageFlags,
 	memory_usage: vma.MemoryUsage,
@@ -113,7 +94,14 @@ _create_buffer :: proc(
 	vk_buffer: vk.Buffer
 	allocation: vma.Allocation
 	allocation_info: vma.AllocationInfo
-	vma.CreateBuffer(vks.allocator, &buffer_info, &allocation_create_info, &vk_buffer, &allocation, &allocation_info)
+	vma.CreateBuffer(
+		ctx.vulkan_state.allocator,
+		&buffer_info,
+		&allocation_create_info,
+		&vk_buffer,
+		&allocation,
+		&allocation_info,
+	)
 	buffer := Buffer {
 		buffer          = vk_buffer,
 		usage           = usage,
@@ -126,47 +114,45 @@ _create_buffer :: proc(
 
 @(private = "file")
 _create_device_local_buffer :: proc(
-	vks: Vulkan_State,
 	size: vk.DeviceSize,
 	data: rawptr,
 	usage: vk.BufferUsageFlags,
 	dst_access_mask: vk.AccessFlags,
 	dst_stage_mask: vk.PipelineStageFlags,
 ) -> Buffer {
-	sc := _cmd_single_begin(vks)
+	sc := _cmd_single_begin()
 
 	// Staging buffer
-	staging_buffer := _create_buffer(vks, size, {.TRANSFER_SRC}, .AUTO, {.HOST_ACCESS_SEQUENTIAL_WRITE})
-	_fill_buffer(&staging_buffer, vks, size, data)
+	staging_buffer := _create_buffer(size, {.TRANSFER_SRC}, .AUTO, {.HOST_ACCESS_SEQUENTIAL_WRITE})
+	_fill_buffer(&staging_buffer, size, data)
 	_cmd_buffer_barrier(sc.command_buffer, staging_buffer, {.HOST_WRITE}, {.TRANSFER_READ}, {.HOST}, {.TRANSFER})
-	defer destroy_buffer(&staging_buffer, vks)
+	defer destroy_buffer(&staging_buffer)
 
 	// Result buffer
-	buffer := _create_buffer(vks, size, {.TRANSFER_DST} + usage, .AUTO_PREFER_DEVICE, {})
+	buffer := _create_buffer(size, {.TRANSFER_DST} + usage, .AUTO_PREFER_DEVICE, {})
 	_copy_buffer(sc.command_buffer, staging_buffer, buffer, size)
 	_cmd_buffer_barrier(sc.command_buffer, buffer, {.TRANSFER_WRITE}, dst_access_mask, {.TRANSFER}, dst_stage_mask)
 
-	_cmd_single_end(sc, vks)
+	_cmd_single_end(sc)
 
 	return buffer
 }
 
 @(private = "file")
 _create_mapped_buffer :: proc(
-	vks: Vulkan_State,
 	size: vk.DeviceSize,
 	usage: vk.BufferUsageFlags,
 	dst_access_mask: vk.AccessFlags,
 	dst_stage_mask: vk.PipelineStageFlags,
 ) -> Buffer {
-	buffer := _create_buffer(vks, size, usage, .AUTO_PREFER_HOST, {.HOST_ACCESS_SEQUENTIAL_WRITE, .MAPPED}, {}, {})
+	buffer := _create_buffer(size, usage, .AUTO_PREFER_HOST, {.HOST_ACCESS_SEQUENTIAL_WRITE, .MAPPED}, {}, {})
 
-	sc := _cmd_single_begin(vks)
+	sc := _cmd_single_begin()
 
-	must(vma.MapMemory(vks.allocator, buffer.allocation, &buffer.mapped))
+	must(vma.MapMemory(ctx.vulkan_state.allocator, buffer.allocation, &buffer.mapped))
 	_cmd_buffer_barrier(sc.command_buffer, buffer, {.HOST_WRITE}, dst_access_mask, {.HOST}, dst_stage_mask)
 
-	_cmd_single_end(sc, vks)
+	_cmd_single_end(sc)
 
 	return buffer
 }

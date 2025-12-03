@@ -2,51 +2,51 @@ package graphics
 
 import "core:log"
 
-_init_deffered_destructor :: proc(g: ^Graphics) {
-	g.deffered_destructor = new(Deferred_Destructor)
+_init_deffered_destructor :: proc() {
+	ctx.deffered_destructor = new(Deferred_Destructor)
 }
 
 @(private)
-_deffered_destructor_add :: proc(g: ^Graphics, resource: Resource) {
-	__deffered_destructor_add(g.deffered_destructor, resource)
+_deffered_destructor_add :: proc(resource: Resource) {
+	_deffered_destructor_add(ctx.deffered_destructor, resource)
 }
 
 @(private)
-_deffered_destructor_clean :: proc(g: ^Graphics) {
-	__deffered_destructor_clean(g.deffered_destructor, g)
+_clear_deffered_destructor :: proc() {
+	_deffered_destructor_clear(ctx.deffered_destructor)
 }
 
 @(private)
-_destroy_deffered_destructor :: proc(g: ^Graphics) {
-	_deffered_destructor_destroy(g.deffered_destructor, g)
-	free(g.deffered_destructor)
+_destroy_deffered_destructor :: proc() {
+	_deffered_destructor_destroy(ctx.deffered_destructor)
+	free(ctx.deffered_destructor)
 }
 
 @(private = "file")
-__deffered_destructor_add :: proc(d: ^Deferred_Destructor, resource: Resource) {
+_deffered_destructor_add :: proc(d: ^Deferred_Destructor, resource: Resource) {
 	d.resources[d.next_index] = resource
 	d.next_index += 1
 	assert(d.next_index < DEFERRED_DESTRUCTOR_SIZE, "Defered destructor is full. Increase DEFERRED_DESTRUCTOR_SIZE.")
 }
 
 @(private = "file")
-__deffered_destructor_clean :: proc(d: ^Deferred_Destructor, g: ^Graphics) {
+_deffered_destructor_clear :: proc(d: ^Deferred_Destructor) {
 	for i in 0 ..< d.next_index {
 		switch &resource in d.resources[i] {
 		case Buffer:
-			destroy_buffer(&resource, g.vulkan_state)
+			destroy_buffer(&resource)
 		case Buffer_Handle:
-			bindless_destroy_buffer(g, resource)
+			bindless_destroy_buffer(resource)
 		case Texture:
-			destroy_texture(g.vulkan_state, &resource)
+			destroy_texture(&resource)
 		case Texture_Handle:
-			bindless_destroy_texture(g, resource)
+			bindless_destroy_texture(resource)
 		}
 	}
 	d.next_index = 0
 }
 
 @(private = "file")
-_deffered_destructor_destroy :: proc(d: ^Deferred_Destructor, g: ^Graphics) {
-	__deffered_destructor_clean(d, g)
+_deffered_destructor_destroy :: proc(d: ^Deferred_Destructor) {
+	_deffered_destructor_clear(d)
 }

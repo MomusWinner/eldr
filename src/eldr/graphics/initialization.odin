@@ -19,64 +19,79 @@ when ODIN_OS == .Darwin {
 }
 
 @(private)
-g_ctx: runtime.Context // used for system procedures
+ctx: Graphics
+@(private)
+g_ctx: runtime.Context // used for system callback procedures
 
-set_logger :: proc(logger: log.Logger) {
-	context.logger = logger
+init :: proc(init_info: Graphics_Init_Info, window: ^glfw.WindowHandle) {
 	g_ctx = context
+
+	ctx.initialized = true
+	ctx.window = window
+
+	_init_vulkan_state()
+	ctx.cmd = _create_draw_command_buffers(ctx.vulkan_state) // TODO:
+	_init_limits()
+
+	_init_pipeline_manager(ODIN_DEBUG)
+	_init_surface_manager()
+	_init_sync_obj()
+	_init_swapchain(init_info.swapchain_sample_count)
+	_init_deffered_destructor()
+	_init_bindless()
+	_init_temp_pools()
+	_init_buildin_resources()
 }
 
-init_graphic :: proc(g: ^Graphics, init_info: Graphics_Init_Info, window: ^glfw.WindowHandle) {
-	g.window = window
+destroy :: proc() {
+	_destroy_buildin()
+	_destroy_temp_pools()
+	_destory_bindless()
+	_destroy_deffered_destructor()
+	_destroy_sync_obj()
+	_destroy_swapchain()
+	_destroy_pipeline_manager()
+	_destroy_surface_manager()
+	_destroy_vulkan_state()
 
-	_init_vulkan_state(&g.vulkan_state, g.window)
-	g.cmd = _create_draw_command_buffers(g.vulkan_state) // TODO:
-	_init_limits(g)
 
-	_init_pipeline_manager(g, ODIN_DEBUG)
-	_init_surface_manager(g)
-	_init_sync_obj(g)
-	_init_swapchain(g, init_info.swapchain_sample_count)
-	_init_deffered_destructor(g)
-	_init_bindless(g)
-	_init_temp_pools(g)
-	_init_buildin_resources(g)
-}
-
-destroy_graphic :: proc(g: ^Graphics) {
-	_destroy_buildin(g)
-	_destroy_temp_pools(g)
-	_destory_bindless(g)
-	_destroy_deffered_destructor(g)
-	_destroy_sync_obj(g)
-	_destroy_swapchain(g)
-	_destroy_pipeline_manager(g)
-	_destroy_surface_manager(g)
-	_destroy_vulkan_state(&g.vulkan_state)
-
-	free(g)
-}
-
-@(private = "file")
-_init_vulkan_state :: proc(state: ^Vulkan_State, window: ^glfw.WindowHandle) {
-	_create_instance(state)
-	_create_surface(state, window)
-	_pick_physical_device(state)
-	_create_logical_device(state)
-	_create_vma_allocator(state)
-	_create_descriptor_pool(state)
-	_create_command_pool(state)
+	ctx = Graphics{}
 }
 
 @(private = "file")
-_destroy_vulkan_state :: proc(state: ^Vulkan_State) {
-	vma.DestroyAllocator(state.allocator)
-	_destroy_command_pool(state)
-	_destroy_descriptor_pool(state)
+_init_vulkan_state :: proc() {
+	_create_instance()
+	_create_surface()
+	_pick_physical_device()
+	_create_logical_device()
+	_create_vma_allocator()
+	_create_descriptor_pool()
+	_create_command_pool()
 
-	_destroy_logical_device(state)
-	_destroy_surface(state)
-	_destroy_instance(state)
+	// log.info("VULKAN STATE")
+	// log.info("Instance", ctx.vulkan_state.instance)
+	// log.info("Physical device", ctx.vulkan_state.physical_device)
+	// log.info("Physical device props", ctx.vulkan_state.physical_device_property)
+	// log.info("Device", ctx.vulkan_state.device)
+	// log.info("Dbg_message", ctx.vulkan_state.dbg_messenger)
+	// log.info("allocator", ctx.vulkan_state.allocator)
+	// log.info("Graphics queue", ctx.vulkan_state.graphics_queue)
+	// log.info("Present queue", ctx.vulkan_state.present_queue)
+	// log.info("Surface", ctx.vulkan_state.surface)
+	// log.info("Command pool", ctx.vulkan_state.command_pool)
+	// log.info("Descriptor pool", ctx.vulkan_state.descriptor_pool)
+}
+
+@(private = "file")
+_destroy_vulkan_state :: proc() {
+	vma.DestroyAllocator(ctx.vulkan_state.allocator)
+	_destroy_command_pool()
+	_destroy_descriptor_pool()
+
+	_destroy_logical_device()
+	_destroy_surface()
+	_destroy_instance()
+	delete(ctx.vulkan_state.enabled_layer_names)
 }
 
 @(private = "file")
@@ -104,11 +119,11 @@ _vk_messenger_callback :: proc "system" (
 }
 
 @(private = "file")
-_create_instance :: proc(vks: ^Vulkan_State) {
+_create_instance :: proc() {
 	vk.load_proc_addresses_global(rawptr(glfw.GetInstanceProcAddress))
 	assert(vk.CreateInstance != nil, "vulkan function pointers not loaded")
 
-	create_info := vk.InstanceCreateInfo {
+	instance_info := vk.InstanceCreateInfo {
 		sType            = .INSTANCE_CREATE_INFO,
 		pApplicationInfo = &vk.ApplicationInfo {
 			sType = .APPLICATION_INFO,
@@ -119,7 +134,6 @@ _create_instance :: proc(vks: ^Vulkan_State) {
 			apiVersion = VULKAN_API_VERSION,
 		},
 	}
-	vks.instance_info = create_info
 
 	extensions := slice.clone_to_dynamic(glfw.GetRequiredInstanceExtensions(), context.temp_allocator)
 
@@ -130,8 +144,10 @@ _create_instance :: proc(vks: ^Vulkan_State) {
 	}
 
 	when ENABLE_VALIDATION_LAYERS {
-		create_info.ppEnabledLayerNames = raw_data([]cstring{"VK_LAYER_KHRONOS_validation"})
-		create_info.enabledLayerCount = 1
+		ctx.vulkan_state.enabled_layer_names = make([]cstring, 1)
+		ctx.vulkan_state.enabled_layer_names[0] = "VK_LAYER_KHRONOS_validation"
+		instance_info.ppEnabledLayerNames = raw_data(ctx.vulkan_state.enabled_layer_names)
+		instance_info.enabledLayerCount = 1
 
 		append(&extensions, vk.EXT_DEBUG_UTILS_EXTENSION_NAME)
 
@@ -156,41 +172,41 @@ _create_instance :: proc(vks: ^Vulkan_State) {
 			messageType     = {.GENERAL, .VALIDATION, .PERFORMANCE}, // all of them.
 			pfnUserCallback = _vk_messenger_callback,
 		}
-		create_info.pNext = &dbg_create_info
+		instance_info.pNext = &dbg_create_info
 	}
 
-	create_info.enabledExtensionCount = u32(len(extensions))
-	create_info.ppEnabledExtensionNames = raw_data(extensions)
+	instance_info.enabledExtensionCount = u32(len(extensions))
+	instance_info.ppEnabledExtensionNames = raw_data(extensions)
 
-	must(vk.CreateInstance(&create_info, nil, &vks.instance))
+	must(vk.CreateInstance(&instance_info, nil, &ctx.vulkan_state.instance))
 
-	vk.load_proc_addresses_instance(vks.instance)
+	vk.load_proc_addresses_instance(ctx.vulkan_state.instance)
 
 	when ENABLE_VALIDATION_LAYERS {
 		dbg_messenger: vk.DebugUtilsMessengerEXT
-		must(vk.CreateDebugUtilsMessengerEXT(vks.instance, &dbg_create_info, nil, &dbg_messenger))
-		vks.dbg_messenger = dbg_messenger
+		must(vk.CreateDebugUtilsMessengerEXT(ctx.vulkan_state.instance, &dbg_create_info, nil, &dbg_messenger))
+		ctx.vulkan_state.dbg_messenger = dbg_messenger
 	}
 }
 
 @(private = "file")
-_destroy_instance :: proc(vks: ^Vulkan_State) {
+_destroy_instance :: proc() {
 	when ENABLE_VALIDATION_LAYERS {
-		dbg_messenger, ok := vks.dbg_messenger.?
+		dbg_messenger, ok := ctx.vulkan_state.dbg_messenger.?
 		assert(ok)
-		vk.DestroyDebugUtilsMessengerEXT(vks.instance, dbg_messenger, nil)
+		vk.DestroyDebugUtilsMessengerEXT(ctx.vulkan_state.instance, dbg_messenger, nil)
 	}
-	vk.DestroyInstance(vks.instance, nil)
+	vk.DestroyInstance(ctx.vulkan_state.instance, nil)
 }
 
 @(private = "file")
-_create_surface :: proc(vks: ^Vulkan_State, window: ^glfw.WindowHandle) {
-	must(glfw.CreateWindowSurface(vks.instance, window^, nil, &vks.surface))
+_create_surface :: proc() {
+	must(glfw.CreateWindowSurface(ctx.vulkan_state.instance, ctx.window^, nil, &ctx.vulkan_state.surface))
 }
 
 @(private = "file")
-_destroy_surface :: proc(vks: ^Vulkan_State) {
-	vk.DestroySurfaceKHR(vks.instance, vks.surface, nil)
+_destroy_surface :: proc() {
+	vk.DestroySurfaceKHR(ctx.vulkan_state.instance, ctx.vulkan_state.surface, nil)
 }
 
 @(private = "file")
@@ -211,8 +227,8 @@ _physical_device_extensions :: proc(
 }
 
 @(private = "file")
-_pick_physical_device :: proc(vks: ^Vulkan_State) {
-	score_physical_device :: proc(vks: ^Vulkan_State, device: vk.PhysicalDevice) -> (score: int) {
+_pick_physical_device :: proc() {
+	score_physical_device :: proc(device: vk.PhysicalDevice) -> (score: int) {
 		features: Physical_Device_Features
 		_get_physical_device_features(device, &features)
 		success, msg := _validate_physical_device_features(features)
@@ -251,7 +267,7 @@ _pick_physical_device :: proc(vks: ^Vulkan_State) {
 
 		// Check if swapchain is adequately supported.
 		{
-			support, result := _query_swapchain_support(device, vks.surface, context.temp_allocator)
+			support, result := _query_swapchain_support(device, ctx.vulkan_state.surface, context.temp_allocator)
 			if result != .SUCCESS {
 				log.infof(" ! query swapchain support failure: %v", result)
 				return 0
@@ -264,7 +280,7 @@ _pick_physical_device :: proc(vks: ^Vulkan_State) {
 			}
 		}
 
-		families := _find_queue_families(device, vks.surface)
+		families := _find_queue_families(device, ctx.vulkan_state.surface)
 		if _, has_graphics := families.graphics.?; !has_graphics {
 			log.info(" ! device does not have a graphics queue")
 			return 0
@@ -296,11 +312,11 @@ _pick_physical_device :: proc(vks: ^Vulkan_State) {
 	}
 
 	count: u32
-	must(vk.EnumeratePhysicalDevices(vks.instance, &count, nil))
+	must(vk.EnumeratePhysicalDevices(ctx.vulkan_state.instance, &count, nil))
 	if count == 0 {log.panic("vulkan: no GPU found")}
 
 	devices := make([]vk.PhysicalDevice, count, context.temp_allocator)
-	must(vk.EnumeratePhysicalDevices(vks.instance, &count, raw_data(devices)))
+	must(vk.EnumeratePhysicalDevices(ctx.vulkan_state.instance, &count, raw_data(devices)))
 
 
 	log.info("////////////////////////////////////////")
@@ -308,8 +324,8 @@ _pick_physical_device :: proc(vks: ^Vulkan_State) {
 	log.info("////////////////////////////////////////")
 	best_device_score := -1
 	for device in devices {
-		if score := score_physical_device(vks, device); score > best_device_score {
-			vks.physical_device = device
+		if score := score_physical_device(device); score > best_device_score {
+			ctx.vulkan_state.physical_device = device
 			best_device_score = score
 		}
 	}
@@ -318,13 +334,12 @@ _pick_physical_device :: proc(vks: ^Vulkan_State) {
 		log.panic("vulkan: no suitable GPU found")
 	}
 
-	vk.GetPhysicalDeviceProperties(vks.physical_device, &vks.physical_device_property)
-	// vks.msaa_samples = {_get_sample_count(g.physical_device_property)} // TODO:
+	vk.GetPhysicalDeviceProperties(ctx.vulkan_state.physical_device, &ctx.vulkan_state.physical_device_property)
 }
 
 @(private = "file")
-_create_logical_device :: proc(vks: ^Vulkan_State) {
-	indices := _find_queue_families(vks.physical_device, vks.surface)
+_create_logical_device :: proc() {
+	indices := _find_queue_families(ctx.vulkan_state.physical_device, ctx.vulkan_state.surface)
 	// TODO: this is kinda messy.
 	indices_set := make(map[u32]struct {
 		}, allocator = context.temp_allocator)
@@ -352,52 +367,52 @@ _create_logical_device :: proc(vks: ^Vulkan_State) {
 		sType                   = .DEVICE_CREATE_INFO,
 		pNext                   = &features.features,
 		pQueueCreateInfos       = raw_data(queue_create_infos),
-		queueCreateInfoCount    = u32(len(queue_create_infos)),
-		enabledLayerCount       = vks.instance_info.enabledLayerCount,
-		ppEnabledLayerNames     = vks.instance_info.ppEnabledLayerNames,
+		queueCreateInfoCount    = cast(u32)(len(queue_create_infos)),
+		enabledLayerCount       = cast(u32)len(ctx.vulkan_state.enabled_layer_names),
+		ppEnabledLayerNames     = raw_data(ctx.vulkan_state.enabled_layer_names),
 		ppEnabledExtensionNames = raw_data(DEVICE_EXTENSIONS),
-		enabledExtensionCount   = u32(len(DEVICE_EXTENSIONS)),
+		enabledExtensionCount   = cast(u32)(len(DEVICE_EXTENSIONS)),
 	}
 
-	must(vk.CreateDevice(vks.physical_device, &device_create_info, nil, &vks.device))
+	must(vk.CreateDevice(ctx.vulkan_state.physical_device, &device_create_info, nil, &ctx.vulkan_state.device))
 
-	vk.GetDeviceQueue(vks.device, indices.graphics.?, 0, &vks.graphics_queue)
-	vk.GetDeviceQueue(vks.device, indices.present.?, 0, &vks.present_queue)
+	vk.GetDeviceQueue(ctx.vulkan_state.device, indices.graphics.?, 0, &ctx.vulkan_state.graphics_queue)
+	vk.GetDeviceQueue(ctx.vulkan_state.device, indices.present.?, 0, &ctx.vulkan_state.present_queue)
 }
 
 @(private)
-_create_vma_allocator :: proc(vks: ^Vulkan_State) {
+_create_vma_allocator :: proc() {
 	vulkan_functions := vma.create_vulkan_functions()
 	create_info := vma.AllocatorCreateInfo {
 		vulkanApiVersion = VULKAN_API_VERSION,
-		physicalDevice   = vks.physical_device,
-		device           = vks.device,
-		instance         = vks.instance,
+		physicalDevice   = ctx.vulkan_state.physical_device,
+		device           = ctx.vulkan_state.device,
+		instance         = ctx.vulkan_state.instance,
 		pVulkanFunctions = &vulkan_functions,
 	}
 
-	must(vma.CreateAllocator(&create_info, &vks.allocator), "failed to create vma.Allocator")
+	must(vma.CreateAllocator(&create_info, &ctx.vulkan_state.allocator), "failed to create vma.Allocator")
 }
 
 @(private = "file")
-_destroy_logical_device :: proc(vks: ^Vulkan_State) {
-	vk.DestroyDevice(vks.device, nil)
+_destroy_logical_device :: proc() {
+	vk.DestroyDevice(ctx.vulkan_state.device, nil)
 }
 
 @(private = "file")
-_create_command_pool :: proc(vks: ^Vulkan_State) {
-	indices := _find_queue_families(vks.physical_device, vks.surface)
+_create_command_pool :: proc() {
+	indices := _find_queue_families(ctx.vulkan_state.physical_device, ctx.vulkan_state.surface)
 	pool_info := vk.CommandPoolCreateInfo {
 		sType            = .COMMAND_POOL_CREATE_INFO,
 		flags            = {.RESET_COMMAND_BUFFER},
 		queueFamilyIndex = indices.graphics.?,
 	}
-	must(vk.CreateCommandPool(vks.device, &pool_info, nil, &vks.command_pool))
+	must(vk.CreateCommandPool(ctx.vulkan_state.device, &pool_info, nil, &ctx.vulkan_state.command_pool))
 }
 
 @(private = "file")
-_destroy_command_pool :: proc(vks: ^Vulkan_State) {
-	vk.DestroyCommandPool(vks.device, vks.command_pool, nil)
+_destroy_command_pool :: proc() {
+	vk.DestroyCommandPool(ctx.vulkan_state.device, ctx.vulkan_state.command_pool, nil)
 }
 
 @(private = "file")
@@ -434,17 +449,17 @@ _get_sample_count :: proc(limits: vk.PhysicalDeviceLimits) -> vk.SampleCountFlag
 	return ._1
 }
 
-_init_limits :: proc(g: ^Graphics) {
-	vk_limits := g.vulkan_state.physical_device_property.limits
+_init_limits :: proc() {
+	vk_limits := ctx.vulkan_state.physical_device_property.limits
 
-	g.limits = Graphics_Limits {
+	ctx.limits = Graphics_Limits {
 		max_sampler_anisotropy = vk_limits.maxSamplerAnisotropy,
 		max_sample_count       = _get_sample_count(vk_limits),
 	}
 }
 
 @(private = "file")
-_init_sync_obj :: proc(g: ^Graphics) {
+_init_sync_obj :: proc() {
 	sem_info := vk.SemaphoreCreateInfo {
 		sType = .SEMAPHORE_CREATE_INFO,
 	}
@@ -452,14 +467,14 @@ _init_sync_obj :: proc(g: ^Graphics) {
 		sType = .FENCE_CREATE_INFO,
 		flags = {.SIGNALED},
 	}
-	must(vk.CreateFence(g.vulkan_state.device, &fence_info, nil, &g.fence))
-	must(vk.CreateSemaphore(g.vulkan_state.device, &sem_info, nil, &g.image_available_semaphore))
+	must(vk.CreateFence(ctx.vulkan_state.device, &fence_info, nil, &ctx.fence))
+	must(vk.CreateSemaphore(ctx.vulkan_state.device, &sem_info, nil, &ctx.image_available_semaphore))
 }
 
 @(private = "file")
-_destroy_sync_obj :: proc(g: ^Graphics) {
-	vk.DestroySemaphore(g.vulkan_state.device, g.image_available_semaphore, nil)
-	vk.DestroyFence(g.vulkan_state.device, g.fence, nil)
+_destroy_sync_obj :: proc() {
+	vk.DestroySemaphore(ctx.vulkan_state.device, ctx.image_available_semaphore, nil)
+	vk.DestroyFence(ctx.vulkan_state.device, ctx.fence, nil)
 }
 
 @(private = "file")
@@ -564,15 +579,15 @@ get_required_physical_device_features :: proc(features: ^Physical_Device_Feature
 }
 
 @(private = "file")
-_init_buildin_resources :: proc(g: ^Graphics) {
-	g.buildin = new(Buildin_Resource)
-	g.buildin.square = create_square_model(g)
-	g.buildin.text_pipeline_h = _text_default_pipeline(g)
-	g.buildin.primitive_pipeline_h = create_primitive_pipeline(g)
+_init_buildin_resources :: proc() {
+	ctx.buildin = new(Buildin_Resource)
+	ctx.buildin.square = create_square_model()
+	ctx.buildin.text_pipeline_h = _text_default_pipeline()
+	ctx.buildin.primitive_pipeline_h = create_primitive_pipeline()
 }
 
 @(private = "file")
-_destroy_buildin :: proc(g: ^Graphics) {
-	destroy_model(g, &g.buildin.square)
-	free(g.buildin)
+_destroy_buildin :: proc() {
+	destroy_model(&ctx.buildin.square)
+	free(ctx.buildin)
 }
