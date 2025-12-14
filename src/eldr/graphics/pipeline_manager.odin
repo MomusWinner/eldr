@@ -11,7 +11,7 @@ import "core:strings"
 import "shaderc"
 import vk "vendor:vulkan"
 
-pipeline_hot_reload :: proc() {
+hot_reload_shaders :: proc() {
 	_pipeline_manager_hot_reload()
 }
 

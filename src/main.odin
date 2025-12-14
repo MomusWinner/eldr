@@ -64,7 +64,7 @@ fixed_update :: proc(user_data: rawptr) {
 
 update :: proc(user_data: rawptr) {
 	if (eldr.is_key_pressed(.R)) {
-		gfx.pipeline_hot_reload()
+		gfx.hot_reload_shaders()
 	}
 
 	if (eldr.is_key_pressed(.Escape)) {
