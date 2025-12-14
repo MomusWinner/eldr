@@ -60,9 +60,15 @@ Mesh :: struct {
 import_obj :: proc(path: string, allocator := context.allocator) -> ([]Mesh, bool) {
 	parse_f :: proc(s: string) -> (pos: int, tex_coord: int, norm: int) {
 		indexes := strings.split(s, "/", context.temp_allocator)
-		pos = -1 + strconv.atoi(indexes[0])
-		tex_coord = -1 + strconv.atoi(indexes[1])
-		norm = -1 + strconv.atoi(indexes[2])
+		pos, _ = strconv.parse_int(indexes[0])
+		pos -= 1
+
+		tex_coord, _ = strconv.parse_int(indexes[1])
+		tex_coord -= 1
+
+		norm, _ = strconv.parse_int(indexes[2])
+		norm -= 1
+
 		return
 	}
 
@@ -97,20 +103,20 @@ import_obj :: proc(path: string, allocator := context.allocator) -> ([]Mesh, boo
 			name = elements[1]
 		}
 		if elements[0] == "v" {
-			x := cast(f32)strconv.atof(elements[1])
-			y := cast(f32)strconv.atof(elements[2])
-			z := cast(f32)strconv.atof(elements[3])
+			x, _ := strconv.parse_f32(elements[1])
+			y, _ := strconv.parse_f32(elements[2])
+			z, _ := strconv.parse_f32(elements[3])
 			append(&pos, vec3{x, y, z})
 		}
 		if elements[0] == "vn" {
-			x := cast(f32)strconv.atof(elements[1])
-			y := cast(f32)strconv.atof(elements[2])
-			z := cast(f32)strconv.atof(elements[3])
+			x, _ := strconv.parse_f32(elements[1])
+			y, _ := strconv.parse_f32(elements[2])
+			z, _ := strconv.parse_f32(elements[3])
 			append(&norm, vec3{x, y, z})
 		}
 		if elements[0] == "vt" {
-			u := cast(f32)strconv.atof(elements[1])
-			v := cast(f32)strconv.atof(elements[2])
+			u, _ := strconv.parse_f32(elements[1])
+			v, _ := strconv.parse_f32(elements[2])
 			append(&texCoord, vec2{u, v})
 		}
 
@@ -143,27 +149,4 @@ import_obj :: proc(path: string, allocator := context.allocator) -> ([]Mesh, boo
 	append(&meshes, Mesh{name = name, vertices = vertices[:], indices = indices[:]})
 
 	return meshes[:], true
-}
-
-
-_info :: proc(vertices: []Vertex, indices: []u16) { 	// TODO: fix
-	fmt.printfln("--------------------------------")
-	fmt.printfln("Vertices")
-	for i in 0 ..< len(vertices) {
-		if (i % 2 == 0) {
-			fmt.println()
-		}
-		fmt.printf(" | %f %f %f | ;", vertices[i].position, vertices[i].tex_coord, vertices[i].normal)
-	}
-	fmt.println()
-
-	fmt.printfln("--------------------------------")
-	fmt.printf("indices")
-
-	for i in 0 ..< len(indices) {
-		if (i % 3 == 0) {
-			fmt.println()
-		}
-		fmt.printf("%d", indices[i])
-	}
 }

@@ -1,11 +1,10 @@
 package main
 
+import "../eldr"
+import gfx "../eldr/graphics"
 import "core:fmt"
 import "core:log"
 import "core:mem"
-import "eldr"
-import gfx "eldr/graphics"
-import mg "eldr/tools/material_generator"
 
 current_scene: Scene
 
@@ -43,7 +42,6 @@ main :: proc() {
 		destroy,
 		{gfx = {swapchain_sample_count = ._4}, window = {width = 800, height = 400, title = "VulkanTest"}},
 	)
-
 
 	current_scene = create_room_scene()
 	// current_scene = create_text_scene()

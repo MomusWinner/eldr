@@ -1,12 +1,12 @@
 package main
 
+import "../eldr"
+import gfx "../eldr/graphics"
 import "base:runtime"
 import "core:log"
 import "core:math"
 import "core:math/rand"
 import "core:time"
-import "eldr"
-import gfx "eldr/graphics"
 
 Room_Scene_Data :: struct {
 	room_texture_h:            gfx.Texture_Handle,

@@ -1,5 +1,7 @@
 package main
 
+import "../eldr"
+import gfx "../eldr/graphics"
 import "base:runtime"
 import "core:fmt"
 import "core:log"
@@ -7,8 +9,6 @@ import "core:math"
 import "core:math/linalg/glsl"
 import "core:math/rand"
 import "core:strings"
-import "eldr"
-import gfx "eldr/graphics"
 
 Text_Scene_Data :: struct {
 	font:        gfx.Font,

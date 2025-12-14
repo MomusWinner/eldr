@@ -1,9 +1,9 @@
 package main
 
+import "../eldr"
+import gfx "../eldr/graphics"
 import "core:log"
 import "core:mem/virtual"
-import "eldr"
-import gfx "eldr/graphics"
 import vk "vendor:vulkan"
 
 default_shader_attribute :: proc(
