@@ -108,7 +108,9 @@ generate_glsl :: proc(path: string, structs: []Material_Struct, loc := #caller_l
 	fmt.fprintln(f, "#include \"buildin:defines/bindless.h\"\n")
 
 	for s in structs {
-		fmt.fprintfln(f, "RegisterUniform(%s, {{", s.name)
+		glsl_struct_name, ok := strings.replace_all(s.name, "_", "")
+		assert(ok)
+		fmt.fprintfln(f, "RegisterUniform(%s, {{", glsl_struct_name)
 
 		for field in calculate_std140_layout(s.fields) {
 			assert(field.type != .None)
@@ -118,8 +120,8 @@ generate_glsl :: proc(path: string, structs: []Material_Struct, loc := #caller_l
 		fmt.fprintfln(f, `
 }});
 
-#define get%s() GetResource(%s, PushConstants.material)
-		`, s.name, s.name)
+#define get{0:s}() GetResource({0:s}, PushConstants.material)
+		`, glsl_struct_name)
 	}
 }
 
