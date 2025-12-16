@@ -181,9 +181,9 @@ end_render :: proc(frame_data: Frame_Data, sync_data: Sync_Data = {}) {
 	_clear_deffered_destructor()
 }
 
-begin_draw :: proc(frame: Frame_Data) -> Frame_Data {
+begin_draw :: proc(frame: Frame_Data, clear_color: vec4 = {0.0, 0.0, 0.0, 1.0}) -> Frame_Data {
 	clear_color := vk.ClearValue {
-		color = {float32 = {0.0, 0.0, 0.0, 1.0}},
+		color = {float32 = clear_color},
 	}
 
 	_transition_image_layout(
