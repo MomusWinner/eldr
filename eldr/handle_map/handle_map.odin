@@ -2,8 +2,10 @@ package handle_map
 
 import "base:builtin"
 import "core:fmt"
+import "core:log"
 import "core:math/linalg/glsl"
 import "core:slice"
+import "core:testing"
 import "core:time"
 
 Handle_Map :: struct($T: typeid, $HT: typeid) {
@@ -84,9 +86,10 @@ insert :: proc(m: ^Handle_Map($T, $HT), value: T) -> (handle: HT) {
 		assert(m.next < max(u32), "Index sparse indices overflow")
 
 		handle = HT {
-			index = u32(len(m.sparse_indices)),
+			index      = u32(len(m.sparse_indices)),
+			generation = 1,
 		}
-		append(&m.sparse_indices, Sparse_Index{index_or_next = u32(len(m.handles))})
+		append(&m.sparse_indices, Sparse_Index{index_or_next = u32(len(m.handles)), generation = 1})
 		append(&m.handles, handle)
 		append(&m.values, value)
 		m.next += 1
@@ -113,4 +116,16 @@ remove :: proc(m: ^Handle_Map($T, $HT), h: HT) -> (value: T, ok: bool) {
 		}
 	}
 	return
+}
+
+@(test)
+test :: proc(t: ^testing.T) {
+	My_Map :: Handle_Map(int, Handle)
+	hm: My_Map
+	init(&hm)
+	h := insert(&hm, 1)
+	testing.expect_value(t, h, Handle{index = 0, generation = 1})
+	value, ok := get(&hm, h)
+	testing.expect_value(t, ok, true)
+	testing.expect_value(t, value^, 1)
 }
