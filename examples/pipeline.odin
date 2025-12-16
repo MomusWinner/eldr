@@ -108,8 +108,8 @@ create_postprocessing_pipeline :: proc() -> gfx.Pipeline_Handle {
 			attribute_descriptions = vert_attr[:],
 		},
 		stage_infos = []gfx.Pipeline_Stage_Info {
-			{stage = {.VERTEX}, shader_path = "assets/buildin/shaders/postprocessing.vert"},
-			{stage = {.FRAGMENT}, shader_path = "assets/buildin/shaders/postprocessing.frag"},
+			{stage = {.VERTEX}, shader_path = "assets/shaders/postprocessing.vert"},
+			{stage = {.FRAGMENT}, shader_path = "assets/shaders/postprocessing.frag"},
 		},
 		input_assembly = {topology = .TRIANGLE_LIST},
 		rasterizer = {polygon_mode = .FILL, line_width = 1, cull_mode = {.BACK}, front_face = .COUNTER_CLOCKWISE},

@@ -119,6 +119,7 @@ draw_model :: proc(
 ) {
 	assert_gfx_ctx(loc)
 	assert_not_nil(transform, loc)
+
 	for &mesh, i in model.meshes {
 		material_index := model.mesh_material[i]
 		draw_mesh(frame_data, &mesh, &model.materials[material_index], camera, transform, loc)
