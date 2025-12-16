@@ -18,6 +18,10 @@ bindless_store_texture :: proc(texture: Texture, loc := #caller_location) -> Tex
 	return _bindless_store_texture(ctx.bindless, texture, loc)
 }
 
+bindless_update_texture :: proc(texture_h: Texture_Handle, new_texture: Texture, loc := #caller_location) {
+	_bindless_update_texture(ctx.bindless, texture_h, new_texture, loc)
+}
+
 bindless_destroy_texture :: proc(texture_h: Texture_Handle, loc := #caller_location) -> bool {
 	assert_gfx_ctx(loc)
 
@@ -218,6 +222,38 @@ _bindless_store_texture :: proc(bindless: ^Bindless, texture: Texture, loc := #c
 	vk.UpdateDescriptorSets(ctx.vulkan_state.device, 1, &write, 0, nil)
 
 	return handle
+}
+
+@(private = "file")
+_bindless_update_texture :: proc(
+	bindless: ^Bindless,
+	texture_h: Texture_Handle,
+	new_texture: Texture,
+	loc := #caller_location,
+) {
+	assert_not_nil(bindless, loc)
+
+	texture, ok := hm.get(&bindless.textures, texture_h)
+	destroy_texture(texture)
+	assert(ok, loc = loc)
+	texture^ = new_texture
+
+	image_info := vk.DescriptorImageInfo {
+		imageLayout = .SHADER_READ_ONLY_OPTIMAL,
+		imageView   = new_texture.view,
+		sampler     = new_texture.sampler,
+	}
+
+	write := vk.WriteDescriptorSet {
+		sType           = .WRITE_DESCRIPTOR_SET,
+		descriptorType  = .COMBINED_IMAGE_SAMPLER,
+		dstBinding      = TEXTURE_BINDING,
+		dstSet          = bindless.set,
+		descriptorCount = 1,
+		dstArrayElement = texture_h.index,
+		pImageInfo      = &image_info,
+	}
+	vk.UpdateDescriptorSets(ctx.vulkan_state.device, 1, &write, 0, nil)
 }
 
 @(private = "file")
