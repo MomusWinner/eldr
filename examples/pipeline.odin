@@ -132,3 +132,46 @@ create_postprocessing_pipeline :: proc() -> gfx.Pipeline_Handle {
 
 	return handle
 }
+
+create_light_pipeline :: proc() -> gfx.Pipeline_Handle {
+	vert_bind, vert_attr := default_shader_attribute()
+
+	set_infos := []gfx.Pipeline_Set_Info{gfx.create_bindless_pipeline_set_info(context.temp_allocator)}
+
+	push_constants := []gfx.Push_Constant_Range { 	// const
+		{offset = 0, size = size_of(gfx.Push_Constant), stageFlags = vk.ShaderStageFlags_ALL_GRAPHICS},
+	}
+
+	create_info := gfx.Create_Pipeline_Info {
+		set_infos = set_infos[:],
+		push_constants = push_constants,
+		vertex_input_description = {
+			input_rate = .VERTEX,
+			binding_description = vert_bind,
+			attribute_descriptions = vert_attr[:],
+		},
+		stage_infos = []gfx.Pipeline_Stage_Info {
+			{stage = {.VERTEX}, shader_path = "assets/shaders/light.vert"},
+			{stage = {.FRAGMENT}, shader_path = "assets/shaders/light.frag"},
+		},
+		input_assembly = {topology = .TRIANGLE_LIST},
+		rasterizer = {polygon_mode = .FILL, line_width = 1, cull_mode = {.BACK}, front_face = .COUNTER_CLOCKWISE},
+		multisampling = {sample_count = ._4, min_sample_shading = 1},
+		depth = {
+			enable = true,
+			write_enable = true,
+			compare_op = .LESS,
+			bounds_test_enable = false,
+			min_bounds = 0,
+			max_bounds = 0,
+		},
+		stencil = {enable = true, front = {}, back = {}},
+	}
+
+	handle, ok := gfx.create_graphics_pipeline(&create_info)
+	if !ok {
+		log.info("couldn't create default pipeline")
+	}
+
+	return handle
+}

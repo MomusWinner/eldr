@@ -45,6 +45,7 @@ main :: proc() {
 
 	current_scene = create_model_scene()
 	// current_scene = create_postprocessing_scene()
+	// current_scene = create_light_scene()
 	// current_scene = create_text_scene()
 	// current_scene = create_empty_scene()
 
