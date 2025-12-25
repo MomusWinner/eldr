@@ -68,14 +68,44 @@ cmd_bind_compute_pipeline :: proc(pipeline: Compute_Pipeline, frame_data: Frame_
 	vk.CmdBindPipeline(frame_data.cmd, .COMPUTE, pipeline.pipeline)
 }
 
-cmd_bind_descriptor_set :: proc(pipeline: ^Pipeline, descriptor_set: [^]vk.DescriptorSet) {
-	vk.CmdBindDescriptorSets(ctx.cmd, .GRAPHICS, pipeline.layout, 0, 1, descriptor_set, 0, nil)
+cmd_bind_descriptor_set_graphics :: proc(
+	frame_data: Frame_Data,
+	pipeline: ^Pipeline,
+	descriptor_sets: ..vk.DescriptorSet,
+	loc := #caller_location,
+) {
+	_cmd_bind_descriptor_set(frame_data, .GRAPHICS, pipeline, descriptor_sets, loc)
 }
 
-cmd_bind_bindless :: proc(frame_data: Frame_Data, pipeline: Pipeline, loc := #caller_location) {
+cmd_bind_descriptor_set_compute :: proc(
+	frame_data: Frame_Data,
+	pipeline: ^Pipeline,
+	descriptor_sets: ..vk.DescriptorSet,
+	loc := #caller_location,
+) {
+	_cmd_bind_descriptor_set(frame_data, .COMPUTE, pipeline, descriptor_sets, loc)
+}
+
+@(private = "file")
+_cmd_bind_descriptor_set :: proc(
+	frame_data: Frame_Data,
+	bind_point: vk.PipelineBindPoint,
+	pipeline: ^Pipeline,
+	descriptor_sets: []vk.DescriptorSet,
+	loc := #caller_location,
+) {
 	assert_gfx_ctx(loc)
 
-	vk.CmdBindDescriptorSets(frame_data.cmd, .GRAPHICS, pipeline.layout, 0, 1, &ctx.bindless.set, 0, nil)
+	vk.CmdBindDescriptorSets(
+		frame_data.cmd,
+		bind_point,
+		pipeline.layout,
+		0,
+		cast(u32)len(descriptor_sets),
+		raw_data(descriptor_sets),
+		0,
+		nil,
+	)
 }
 
 @(private)

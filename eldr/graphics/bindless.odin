@@ -109,6 +109,11 @@ bindless_has_texture :: proc(texture_h: Texture_Handle, loc := #caller_location)
 	return hm.has_handle(&ctx.bindless.textures, texture_h)
 }
 
+@(require_results)
+get_descriptor_set_bindless :: proc() -> Descriptor_Set {
+	return ctx.bindless.set
+}
+
 @(private)
 _init_bindless :: proc(loc := #caller_location) {
 	assert(ctx.bindless == nil, "Bindless already initialized", loc)

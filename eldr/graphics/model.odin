@@ -68,7 +68,7 @@ draw_mesh :: proc(
 
 	g_pipeline := cmd_bind_render_pipeline(frame_data, pipeline, loc)
 
-	cmd_bind_bindless(frame_data, g_pipeline)
+	cmd_bind_descriptor_set_graphics(frame_data, &g_pipeline, get_descriptor_set_bindless())
 
 	const := Push_Constant {
 		camera   = _camera_get_buffer(camera, get_screen_aspect()).index,

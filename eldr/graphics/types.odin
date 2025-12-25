@@ -32,6 +32,7 @@ Push_Constant_Range :: vk.PushConstantRange
 Device_Size :: vk.DeviceSize
 Command_Buffer :: vk.CommandBuffer
 Pipeline_Stage_Flags :: vk.PipelineStageFlags
+Descriptor_Set :: vk.DescriptorSet
 
 Buildin_Resource :: struct {
 	default_pipeline_h:   Render_Pipeline_Handle,
@@ -222,7 +223,6 @@ Pipeline :: struct {
 	layout:                 vk.PipelineLayout,
 	descriptor_set_layouts: Descriptor_Set_Layouts,
 }
-
 
 Render_Pipeline :: struct {
 	cache:       map[Surface_Info]Graphics_Pipeline,
