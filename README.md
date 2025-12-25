@@ -76,6 +76,7 @@ In development
 git clone https://github.com/yourusername/eldr.git
 cd eldr
 
+unzip dependencies.zip
 make gen-eldr
 make gen
 make run
