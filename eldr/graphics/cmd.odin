@@ -109,11 +109,6 @@ _cmd_bind_descriptor_set :: proc(
 }
 
 @(private)
-SingleCommand :: struct {
-	command_buffer: vk.CommandBuffer,
-}
-
-@(private)
 @(require_results)
 _cmd_single_begin :: proc() -> SingleCommand {
 	alloc_info := vk.CommandBufferAllocateInfo {
@@ -132,12 +127,12 @@ _cmd_single_begin :: proc() -> SingleCommand {
 	}
 	must(vk.BeginCommandBuffer(command_buffer, &begin_info))
 
-	return SingleCommand{command_buffer = command_buffer}
+	return SingleCommand{cmd = command_buffer}
 }
 
 @(private)
 _cmd_single_end :: proc(single_command: SingleCommand) {
-	command_buffer := single_command.command_buffer
+	command_buffer := single_command.cmd
 
 	must(vk.EndCommandBuffer(command_buffer))
 

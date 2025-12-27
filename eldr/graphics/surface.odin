@@ -80,7 +80,7 @@ surface_add_depth_attachment :: proc(surface: ^Surface, clear_value: f32 = 1, lo
 
 	sc := _cmd_single_begin()
 	width, height := get_screen_width(), get_screen_height()
-	depth_resource := _create_surface_depth_resource(width, height, sc.command_buffer, surface.sample_count)
+	depth_resource := _create_surface_depth_resource(width, height, sc.cmd, surface.sample_count)
 	_cmd_single_end(sc)
 
 	depth_attachment := Surface_Depth_Attachment {

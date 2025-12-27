@@ -124,13 +124,13 @@ _create_device_local_buffer :: proc(
 	// Staging buffer
 	staging_buffer := _create_buffer(size, {.TRANSFER_SRC}, .AUTO, {.HOST_ACCESS_SEQUENTIAL_WRITE})
 	fill_buffer(&staging_buffer, size, data)
-	_cmd_buffer_barrier(sc.command_buffer, staging_buffer, {.HOST_WRITE}, {.TRANSFER_READ}, {.HOST}, {.TRANSFER})
+	_cmd_buffer_barrier(sc.cmd, staging_buffer, {.HOST_WRITE}, {.TRANSFER_READ}, {.HOST}, {.TRANSFER})
 	defer destroy_buffer(&staging_buffer)
 
 	// Result buffer
 	buffer := _create_buffer(size, {.TRANSFER_DST} + usage, .AUTO_PREFER_DEVICE, {})
-	_copy_buffer(sc.command_buffer, staging_buffer, buffer, size)
-	_cmd_buffer_barrier(sc.command_buffer, buffer, {.TRANSFER_WRITE}, dst_access_mask, {.TRANSFER}, dst_stage_mask)
+	_copy_buffer(sc.cmd, staging_buffer, buffer, size)
+	_cmd_buffer_barrier(sc.cmd, buffer, {.TRANSFER_WRITE}, dst_access_mask, {.TRANSFER}, dst_stage_mask)
 
 	_cmd_single_end(sc)
 
@@ -149,7 +149,7 @@ _create_mapped_buffer :: proc(
 	sc := _cmd_single_begin()
 
 	must(vma.MapMemory(ctx.vulkan_state.allocator, buffer.allocation, &buffer.mapped))
-	_cmd_buffer_barrier(sc.command_buffer, buffer, {.HOST_WRITE}, dst_access_mask, {.HOST}, dst_stage_mask)
+	_cmd_buffer_barrier(sc.cmd, buffer, {.HOST_WRITE}, dst_access_mask, {.HOST}, dst_stage_mask)
 
 	_cmd_single_end(sc)
 

@@ -121,6 +121,10 @@ Deferred_Destructor :: struct {
 	next_index: int,
 }
 
+@(private)
+SingleCommand :: struct {
+	cmd: vk.CommandBuffer,
+}
 
 // PIPELINE
 

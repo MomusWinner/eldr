@@ -24,7 +24,7 @@ create_texture :: proc(
 	// Staging Buffer
 	staging_buffer := _create_buffer(image_size, {.TRANSFER_SRC}, .AUTO, {.HOST_ACCESS_SEQUENTIAL_WRITE})
 	fill_buffer(&staging_buffer, image_size, image.data)
-	_cmd_buffer_barrier(sc.command_buffer, staging_buffer, {.HOST_WRITE}, {.TRANSFER_READ}, {.HOST}, {.TRANSFER})
+	_cmd_buffer_barrier(sc.cmd, staging_buffer, {.HOST_WRITE}, {.TRANSFER_READ}, {.HOST}, {.TRANSFER})
 	defer destroy_buffer(&staging_buffer)
 
 	format: vk.Format
@@ -73,19 +73,11 @@ create_texture :: proc(
 		vma.AllocationCreateFlags{},
 	)
 
-	_transition_image_layout(
-		sc.command_buffer,
-		vk_image,
-		{.COLOR},
-		format,
-		.UNDEFINED,
-		.TRANSFER_DST_OPTIMAL,
-		mip_levels,
-	)
-	_copy_buffer_to_image(sc.command_buffer, staging_buffer.buffer, vk_image, image.width, image.height)
+	_transition_image_layout(sc.cmd, vk_image, {.COLOR}, format, .UNDEFINED, .TRANSFER_DST_OPTIMAL, mip_levels)
+	_copy_buffer_to_image(sc.cmd, staging_buffer.buffer, vk_image, image.width, image.height)
 
 	if mip_levels > 1 {
-		_generate_mipmaps(sc.command_buffer, vk_image, format, cast(i32)image.width, cast(i32)image.height, mip_levels)
+		_generate_mipmaps(sc.cmd, vk_image, format, cast(i32)image.width, cast(i32)image.height, mip_levels)
 	}
 
 	_cmd_single_end(sc)
